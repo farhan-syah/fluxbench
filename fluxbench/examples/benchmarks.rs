@@ -300,13 +300,157 @@ fn bench_fibonacci_iter(b: &mut Bencher) {
         for _ in 0..n {
             let tmp = a;
             a = b;
-            b = tmp + b;
+            b += tmp;
         }
         a
     }
 
     b.iter(|| black_box(fib(20)));
 }
+
+// ============================================================================
+// Verifications - Compare Benchmark Results
+// ============================================================================
+
+use fluxbench::verify;
+use fluxbench::synthetic;
+
+/// Verify iterative fibonacci is faster than naive recursive
+/// Uses mean timing: bench_fibonacci_iter < bench_fibonacci_naive
+#[verify(expr = "bench_fibonacci_iter < bench_fibonacci_naive", severity = "critical")]
+#[allow(dead_code)]
+struct IterFasterThanNaive;
+
+/// Verify iterative is at least 100x faster (it should be ~1000x faster)
+#[verify(expr = "bench_fibonacci_naive / bench_fibonacci_iter > 100", severity = "warning")]
+#[allow(dead_code)]
+struct IterMuchFaster;
+
+/// Verify p99 latency of iterative is reasonable (< 1ms)
+#[verify(expr = "bench_fibonacci_iter_p99 < 1000000", severity = "info")]
+#[allow(dead_code)]
+struct IterP99Under1ms;
+
+/// Compute speedup ratio: how many times faster is iterative?
+#[synthetic(id = "fib_speedup", formula = "bench_fibonacci_naive / bench_fibonacci_iter", unit = "x")]
+#[allow(dead_code)]
+struct FibSpeedup;
+
+/// Verify the computed speedup is significant
+#[verify(expr = "fib_speedup > 50", severity = "warning")]
+#[allow(dead_code)]
+struct SpeedupSignificant;
+
+// ============================================================================
+// Multi-Way Comparison (Using #[compare] macro)
+// ============================================================================
+//
+// Use #[compare] to create a comparison table for multiple benchmarks.
+// This generates a formatted table with speedup ratios vs the baseline.
+
+use fluxbench::compare;
+
+/// Compare all string operations against each other
+#[compare(
+    id = "string_ops",
+    title = "String Operations Comparison",
+    benchmarks = ["bench_string_concat", "bench_string_parse"],
+    baseline = "bench_string_concat",
+    metric = "mean"
+)]
+#[allow(dead_code)]
+struct StringComparison;
+
+/// Compare HashMap operations
+#[compare(
+    id = "hashmap_ops",
+    title = "HashMap Operations",
+    benchmarks = ["bench_hashmap_insert", "bench_hashmap_lookup"],
+    baseline = "bench_hashmap_insert"
+)]
+#[allow(dead_code)]
+struct HashMapComparison;
+
+// ============================================================================
+// Comparison Series (Grouped Multi-Point Comparisons)
+// ============================================================================
+//
+// Use group and x attributes to create series charts.
+// Multiple #[compare] with same group combine into one chart.
+// Each comparison must reference DIFFERENT benchmarks for each x value.
+
+// Benchmarks for different vector sizes
+#[bench(group = "scaling")]
+fn bench_vec_sum_100(b: &mut Bencher) {
+    let data: Vec<i64> = (0..100).collect();
+    b.iter(|| black_box(data.iter().sum::<i64>()));
+}
+
+#[bench(group = "scaling")]
+fn bench_vec_fold_100(b: &mut Bencher) {
+    let data: Vec<i64> = (0..100).collect();
+    b.iter(|| black_box(data.iter().fold(0i64, |a, b| a + b)));
+}
+
+#[bench(group = "scaling")]
+fn bench_vec_sum_1000(b: &mut Bencher) {
+    let data: Vec<i64> = (0..1000).collect();
+    b.iter(|| black_box(data.iter().sum::<i64>()));
+}
+
+#[bench(group = "scaling")]
+fn bench_vec_fold_1000(b: &mut Bencher) {
+    let data: Vec<i64> = (0..1000).collect();
+    b.iter(|| black_box(data.iter().fold(0i64, |a, b| a + b)));
+}
+
+#[bench(group = "scaling")]
+fn bench_vec_sum_10000(b: &mut Bencher) {
+    let data: Vec<i64> = (0..10000).collect();
+    b.iter(|| black_box(data.iter().sum::<i64>()));
+}
+
+#[bench(group = "scaling")]
+fn bench_vec_fold_10000(b: &mut Bencher) {
+    let data: Vec<i64> = (0..10000).collect();
+    b.iter(|| black_box(data.iter().fold(0i64, |a, b| a + b)));
+}
+
+/// Size 100: sum vs fold
+#[compare(
+    id = "scale_100",
+    title = "Vector Sum Scaling",
+    benchmarks = ["bench_vec_sum_100", "bench_vec_fold_100"],
+    group = "vec_scaling",
+    x = "100",
+    series = ["sum()", "fold()"]
+)]
+#[allow(dead_code)]
+struct VecScale100;
+
+/// Size 1000: sum vs fold
+#[compare(
+    id = "scale_1000",
+    title = "Vector Sum Scaling",
+    benchmarks = ["bench_vec_sum_1000", "bench_vec_fold_1000"],
+    group = "vec_scaling",
+    x = "1000",
+    series = ["sum()", "fold()"]
+)]
+#[allow(dead_code)]
+struct VecScale1000;
+
+/// Size 10000: sum vs fold
+#[compare(
+    id = "scale_10000",
+    title = "Vector Sum Scaling",
+    benchmarks = ["bench_vec_sum_10000", "bench_vec_fold_10000"],
+    group = "vec_scaling",
+    x = "10000",
+    series = ["sum()", "fold()"]
+)]
+#[allow(dead_code)]
+struct VecScale10000;
 
 // ============================================================================
 // Main Entry Point - Uses FluxBench CLI

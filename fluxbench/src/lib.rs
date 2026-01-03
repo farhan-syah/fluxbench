@@ -43,17 +43,18 @@
 
 // Re-export core types
 pub use fluxbench_core::{
-    Bencher, BenchmarkDef, BenchmarkResult, ChartDef, ChartType, GroupDef, IterationMode,
-    ReportDef, Severity, current_allocation, reset_allocation_counter,
+    Bencher, BenchmarkDef, BenchmarkResult, ChartDef, ChartType, CompareDef, GroupDef,
+    IterationMode, ReportDef, Severity, current_allocation, reset_allocation_counter,
 };
 
 // Re-export macros
-pub use fluxbench_macros::{bench, group, report, synthetic, verify};
+pub use fluxbench_macros::{bench, compare, group, report, synthetic, verify};
 
 // Re-export logic types
 pub use fluxbench_logic::{
     MetricContext, Verification, VerificationResult, VerificationStatus, VerifyDef,
     SyntheticDef,
+    Severity as VerifySeverity,  // Severity for verify/synthetic macros
 };
 
 // Re-export stats
@@ -72,12 +73,12 @@ pub mod internal {
 /// Prelude for convenient imports
 pub mod prelude {
     pub use crate::{
-        bench, group, report, synthetic, verify,
-        Bencher, GroupDef, ReportDef, Severity,
+        bench, compare, group, report, synthetic, verify,
+        Bencher, CompareDef, GroupDef, ReportDef, Severity,
     };
 }
 
 /// Attribute namespace for flux macros
 pub mod flux {
-    pub use fluxbench_macros::{bench, group, report, synthetic, verify};
+    pub use fluxbench_macros::{bench, compare, group, report, synthetic, verify};
 }
