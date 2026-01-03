@@ -8,9 +8,58 @@ use fluxbench_stats::SummaryStatistics;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Report {
     pub meta: ReportMeta,
-    pub results: Vec<BenchmarkResult>,
+    pub results: Vec<BenchmarkReportResult>,
+    pub comparisons: Vec<ComparisonResult>,
+    pub comparison_series: Vec<ComparisonSeries>,
+    pub synthetics: Vec<fluxbench_logic::SyntheticResult>,
     pub verifications: Vec<fluxbench_logic::VerificationResult>,
     pub summary: ReportSummary,
+}
+
+/// Result of a comparison group
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComparisonResult {
+    /// Comparison identifier
+    pub id: String,
+    /// Human-readable title
+    pub title: String,
+    /// Baseline benchmark ID
+    pub baseline: String,
+    /// Metric used for comparison
+    pub metric: String,
+    /// Individual benchmark entries in the comparison
+    pub entries: Vec<ComparisonEntry>,
+}
+
+/// Single entry in a comparison table
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComparisonEntry {
+    /// Benchmark ID
+    pub benchmark_id: String,
+    /// Metric value (e.g., mean time in ns)
+    pub value: f64,
+    /// Speedup vs baseline (1.0 = same, >1.0 = faster, <1.0 = slower)
+    pub speedup: f64,
+    /// Whether this is the baseline
+    pub is_baseline: bool,
+}
+
+/// Grouped comparison series for multi-point charts (e.g., batch size scaling)
+/// Multiple #[compare(group = "...", x = "...")] combine into one series
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComparisonSeries {
+    /// Group identifier
+    pub group: String,
+    /// Chart title (from first comparison's title)
+    pub title: String,
+    /// X-axis values in order (e.g., ["1", "10", "100", "1000"])
+    pub x_values: Vec<String>,
+    /// Competitor/series names (benchmark IDs)
+    pub series_names: Vec<String>,
+    /// Data points: series_data[series_idx][x_idx] = value
+    pub series_data: Vec<Vec<f64>>,
+    /// Metric used
+    pub metric: String,
 }
 
 /// Report metadata
@@ -33,9 +82,9 @@ pub struct SystemInfo {
     pub memory_gb: f64,
 }
 
-/// Individual benchmark result
+/// Individual benchmark result in the report
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BenchmarkResult {
+pub struct BenchmarkReportResult {
     pub id: String,
     pub name: String,
     pub group: String,

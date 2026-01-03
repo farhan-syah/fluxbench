@@ -6,17 +6,19 @@
 //! - CSV (spreadsheet-compatible)
 //! - HTML (interactive dashboard)
 
+mod csv;
 mod github;
 mod html;
 mod json;
 mod report;
 
+pub use csv::generate_csv_report;
 pub use github::generate_github_summary;
 pub use html::generate_html_report;
 pub use json::{generate_json_report, ReportSchema};
 pub use report::{
-    BenchmarkMetrics, BenchmarkResult as ReportBenchmarkResult, BenchmarkStatus, Comparison,
-    FailureInfo, Report, ReportMeta, ReportSummary, SystemInfo,
+    BenchmarkMetrics, BenchmarkReportResult, BenchmarkStatus, Comparison, ComparisonEntry,
+    ComparisonResult, ComparisonSeries, FailureInfo, Report, ReportMeta, ReportSummary, SystemInfo,
 };
 
 /// Output format selection
@@ -48,3 +50,4 @@ impl std::str::FromStr for OutputFormat {
         }
     }
 }
+
