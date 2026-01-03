@@ -36,4 +36,5 @@ thiserror.workspace = true
 anyhow.workspace = true
 regex.workspace = true
 fxhash.workspace = true
+rayon.workspace = true
 libc = "0.2"

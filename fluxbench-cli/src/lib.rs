@@ -35,8 +35,10 @@ use clap::{Parser, Subcommand};
 use fluxbench_core::{BenchmarkDef, WorkerMain};
 use fluxbench_logic::aggregate_verifications;
 use fluxbench_report::{
-    generate_github_summary, generate_html_report, generate_json_report, OutputFormat,
+    generate_csv_report, generate_github_summary, generate_html_report, generate_json_report,
+    OutputFormat,
 };
+use rayon::ThreadPoolBuilder;
 use regex::Regex;
 use std::io::Write;
 use std::path::PathBuf;
@@ -119,6 +121,11 @@ pub struct Cli {
     /// Worker timeout in seconds
     #[arg(long, default_value = "60")]
     pub worker_timeout: u64,
+
+    /// Number of threads for parallel statistics computation
+    /// 0 = use all available cores (default), 1 = single-threaded
+    #[arg(long, short = 'j', default_value = "0")]
+    pub threads: usize,
 
     /// Internal: Run as worker process (used by supervisor)
     #[arg(long, hide = true)]
@@ -276,6 +283,16 @@ fn list_benchmarks(cli: &Cli) -> anyhow::Result<()> {
 }
 
 fn run_benchmarks(cli: &Cli, format: OutputFormat) -> anyhow::Result<()> {
+    // Configure Rayon thread pool for statistics computation
+    // threads=0 means use all available cores (Rayon default)
+    // threads=1 means single-threaded (deterministic results)
+    if cli.threads > 0 {
+        ThreadPoolBuilder::new()
+            .num_threads(cli.threads)
+            .build_global()
+            .ok(); // Ignore error if already initialized
+    }
+
     // Discover benchmarks
     let all_benchmarks: Vec<_> = inventory::iter::<BenchmarkDef>.into_iter().collect();
     let benchmarks = filter_benchmarks(cli, &all_benchmarks);
@@ -285,12 +302,17 @@ fn run_benchmarks(cli: &Cli, format: OutputFormat) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    let threads_str = if cli.threads == 0 {
+        "all".to_string()
+    } else {
+        cli.threads.to_string()
+    };
     let mode_str = if cli.isolated {
         if cli.one_shot { " (isolated, one-shot)" } else { " (isolated)" }
     } else {
         " (in-process)"
     };
-    println!("Running {} benchmarks{}...\n", benchmarks.len(), mode_str);
+    println!("Running {} benchmarks{}, {} threads...\n", benchmarks.len(), mode_str, threads_str);
 
     let start_time = Instant::now();
 
@@ -301,7 +323,7 @@ fn run_benchmarks(cli: &Cli, format: OutputFormat) -> anyhow::Result<()> {
         min_iterations: cli.min_iterations,
         max_iterations: cli.max_iterations,
         track_allocations: true,
-        bootstrap_iterations: 10_000,
+        bootstrap_iterations: 100_000, // Matches Criterion default
         confidence_level: 0.95,
     };
 
@@ -326,9 +348,12 @@ fn run_benchmarks(cli: &Cli, format: OutputFormat) -> anyhow::Result<()> {
     let total_duration_ms = start_time.elapsed().as_secs_f64() * 1000.0;
     let mut report = build_report(&results, &stats, &exec_config, total_duration_ms);
 
-    // Run verifications
-    let verification_results = execute_verifications(&results, &stats);
+    // Run comparisons, synthetics, and verifications
+    let (comparison_results, comparison_series, synthetic_results, verification_results) = execute_verifications(&results, &stats);
     let verification_summary = aggregate_verifications(&verification_results);
+    report.comparisons = comparison_results;
+    report.comparison_series = comparison_series;
+    report.synthetics = synthetic_results;
     report.verifications = verification_results;
 
     // Update summary with verification info
@@ -443,8 +468,11 @@ fn compare_benchmarks(cli: &Cli, git_ref: &str, format: OutputFormat) -> anyhow:
         }
     }
 
-    // Run verifications
-    let verification_results = execute_verifications(&results, &stats);
+    // Run comparisons, synthetics, and verifications
+    let (comparison_results, comparison_series, synthetic_results, verification_results) = execute_verifications(&results, &stats);
+    report.comparisons = comparison_results;
+    report.comparison_series = comparison_series;
+    report.synthetics = synthetic_results;
     report.verifications = verification_results;
 
     // Generate output
@@ -475,55 +503,6 @@ fn compare_benchmarks(cli: &Cli, git_ref: &str, format: OutputFormat) -> anyhow:
     }
 
     Ok(())
-}
-
-/// Generate CSV report
-fn generate_csv_report(report: &fluxbench_report::Report) -> String {
-    let mut csv = String::new();
-
-    // Header (includes CPU cycles columns)
-    csv.push_str("id,name,group,status,mean_ns,median_ns,std_dev_ns,min_ns,max_ns,p50_ns,p95_ns,p99_ns,samples,alloc_bytes,alloc_count,mean_cycles,median_cycles,cycles_per_ns\n");
-
-    // Data rows
-    for result in &report.results {
-        let status = match result.status {
-            fluxbench_report::BenchmarkStatus::Passed => "passed",
-            fluxbench_report::BenchmarkStatus::Failed => "failed",
-            fluxbench_report::BenchmarkStatus::Crashed => "crashed",
-            fluxbench_report::BenchmarkStatus::Skipped => "skipped",
-        };
-
-        if let Some(metrics) = &result.metrics {
-            csv.push_str(&format!(
-                "{},{},{},{},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{},{},{},{:.0},{:.0},{:.2}\n",
-                result.id,
-                result.name,
-                result.group,
-                status,
-                metrics.mean_ns,
-                metrics.median_ns,
-                metrics.std_dev_ns,
-                metrics.min_ns,
-                metrics.max_ns,
-                metrics.p50_ns,
-                metrics.p95_ns,
-                metrics.p99_ns,
-                metrics.samples,
-                metrics.alloc_bytes,
-                metrics.alloc_count,
-                metrics.mean_cycles,
-                metrics.median_cycles,
-                metrics.cycles_per_ns,
-            ));
-        } else {
-            csv.push_str(&format!(
-                "{},{},{},{},,,,,,,,,,,,,\n",
-                result.id, result.name, result.group, status,
-            ));
-        }
-    }
-
-    csv
 }
 
 /// Format comparison output for human display
