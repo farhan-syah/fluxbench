@@ -128,10 +128,17 @@ impl WorkerMain {
                     "Unknown panic".to_string()
                 };
 
+                // Capture backtrace - requires RUST_BACKTRACE=1 for full traces
+                let backtrace = std::backtrace::Backtrace::capture();
+                let backtrace_str = match backtrace.status() {
+                    std::backtrace::BacktraceStatus::Captured => Some(backtrace.to_string()),
+                    _ => None,
+                };
+
                 self.writer.write(&WorkerMessage::Failure {
                     kind: FailureKind::Panic,
                     message,
-                    backtrace: None, // TODO: capture backtrace
+                    backtrace: backtrace_str,
                 })?;
             }
         }

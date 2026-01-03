@@ -108,10 +108,33 @@ pub struct ReportDef {
     pub charts: &'static [ChartDef],
 }
 
+/// Comparison group - groups multiple benchmarks for side-by-side comparison
+#[derive(Debug, Clone)]
+pub struct CompareDef {
+    /// Comparison identifier
+    pub id: &'static str,
+    /// Human-readable title
+    pub title: &'static str,
+    /// Benchmark IDs to compare
+    pub benchmarks: &'static [&'static str],
+    /// Optional baseline benchmark (first one if not specified)
+    pub baseline: Option<&'static str>,
+    /// Metric to compare (default: mean)
+    pub metric: &'static str,
+    /// Group for chart generation (comparisons with same group form a chart)
+    pub group: Option<&'static str>,
+    /// X-axis value for this comparison point (e.g., "1", "10", "100")
+    pub x: Option<&'static str>,
+    /// Series labels (display names) - must match benchmarks array length
+    /// If not specified, benchmark IDs are used as labels
+    pub series: Option<&'static [&'static str]>,
+}
+
 // Collect all registered benchmarks
 inventory::collect!(BenchmarkDef);
 inventory::collect!(GroupDef);
 inventory::collect!(ReportDef);
+inventory::collect!(CompareDef);
 
 /// Anchor to prevent LTO from stripping inventory entries
 #[used]
@@ -120,4 +143,5 @@ pub static REGISTRY_ANCHOR: fn() = || {
     for _ in inventory::iter::<BenchmarkDef> {}
     for _ in inventory::iter::<GroupDef> {}
     for _ in inventory::iter::<ReportDef> {}
+    for _ in inventory::iter::<CompareDef> {}
 };

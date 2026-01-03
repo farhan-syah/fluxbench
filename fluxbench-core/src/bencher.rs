@@ -127,6 +127,44 @@ impl Bencher {
         self.current_sample_alloc_count = 0;
     }
 
+    /// Accumulate a single iteration's measurements into the current sample
+    ///
+    /// During warmup: records timing for iteration time estimation.
+    /// During measurement: accumulates into batched samples, flushing when complete.
+    ///
+    /// # Arguments
+    /// * `duration_nanos` - Iteration duration in nanoseconds
+    /// * `cpu_cycles` - CPU cycles consumed (x86_64 only, 0 otherwise)
+    /// * `alloc_bytes` - Bytes allocated during iteration
+    /// * `alloc_count` - Number of allocations during iteration
+    #[inline]
+    fn accumulate_sample(
+        &mut self,
+        duration_nanos: u64,
+        cpu_cycles: u32,
+        alloc_bytes: u64,
+        alloc_count: u64,
+    ) {
+        self.total_iterations += 1;
+
+        if self.is_warmup {
+            // During warmup: collect raw timings for estimation
+            self.warmup_times.push(duration_nanos);
+        } else {
+            // During measurement: accumulate into current sample
+            self.current_sample_time_ns += duration_nanos;
+            self.current_sample_cycles += cpu_cycles as u64;
+            self.current_sample_iters += 1;
+            self.current_sample_alloc_bytes += alloc_bytes;
+            self.current_sample_alloc_count += alloc_count;
+
+            // Check if we've completed this sample batch
+            if self.current_sample_iters >= self.iters_per_sample {
+                self.flush_sample();
+            }
+        }
+    }
+
     /// Run the benchmark closure for one iteration.
     ///
     /// During warmup: records individual timings for estimation.
@@ -157,24 +195,7 @@ impl Bencher {
             (0, 0)
         };
 
-        self.total_iterations += 1;
-
-        if self.is_warmup {
-            // During warmup: collect raw timings for estimation
-            self.warmup_times.push(duration_nanos);
-        } else {
-            // During measurement: accumulate into current sample
-            self.current_sample_time_ns += duration_nanos;
-            self.current_sample_cycles += cpu_cycles as u64;
-            self.current_sample_iters += 1;
-            self.current_sample_alloc_bytes += alloc_bytes;
-            self.current_sample_alloc_count += alloc_count;
-
-            // Check if we've completed this sample batch
-            if self.current_sample_iters >= self.iters_per_sample {
-                self.flush_sample();
-            }
-        }
+        self.accumulate_sample(duration_nanos, cpu_cycles, alloc_bytes, alloc_count);
     }
 
     /// Run the benchmark with separate setup phase
@@ -208,21 +229,7 @@ impl Bencher {
             (0, 0)
         };
 
-        self.total_iterations += 1;
-
-        if self.is_warmup {
-            self.warmup_times.push(duration_nanos);
-        } else {
-            self.current_sample_time_ns += duration_nanos;
-            self.current_sample_cycles += cpu_cycles as u64;
-            self.current_sample_iters += 1;
-            self.current_sample_alloc_bytes += alloc_bytes;
-            self.current_sample_alloc_count += alloc_count;
-
-            if self.current_sample_iters >= self.iters_per_sample {
-                self.flush_sample();
-            }
-        }
+        self.accumulate_sample(duration_nanos, cpu_cycles, alloc_bytes, alloc_count);
     }
 
     /// Run benchmark with batched iterations (user-specified batch size)
@@ -253,7 +260,7 @@ impl Bencher {
 
         // Per-iteration values
         let per_iter_nanos = total_nanos / batch_size;
-        let per_iter_cycles = total_cycles as u64 / batch_size;
+        let per_iter_cycles = (total_cycles as u64 / batch_size) as u32;
 
         // Collect allocation data (total for batch, then average)
         let (alloc_bytes, alloc_count) = if self.track_allocations {
@@ -263,21 +270,10 @@ impl Bencher {
             (0, 0)
         };
 
-        self.total_iterations += batch_size;
-
-        if self.is_warmup {
-            self.warmup_times.push(per_iter_nanos);
-        } else {
-            self.current_sample_time_ns += per_iter_nanos;
-            self.current_sample_cycles += per_iter_cycles;
-            self.current_sample_iters += 1;
-            self.current_sample_alloc_bytes += alloc_bytes;
-            self.current_sample_alloc_count += alloc_count;
-
-            if self.current_sample_iters >= self.iters_per_sample {
-                self.flush_sample();
-            }
-        }
+        // For batched iterations, we count the batch as batch_size iterations
+        // but accumulate as a single sample point
+        self.total_iterations += batch_size - 1; // -1 because accumulate_sample adds 1
+        self.accumulate_sample(per_iter_nanos, per_iter_cycles, alloc_bytes, alloc_count);
     }
 
     /// Run an async benchmark closure (standalone - creates its own runtime)
@@ -306,21 +302,7 @@ impl Bencher {
             (0, 0)
         };
 
-        self.total_iterations += 1;
-
-        if self.is_warmup {
-            self.warmup_times.push(duration_nanos);
-        } else {
-            self.current_sample_time_ns += duration_nanos;
-            self.current_sample_cycles += cpu_cycles as u64;
-            self.current_sample_iters += 1;
-            self.current_sample_alloc_bytes += alloc_bytes;
-            self.current_sample_alloc_count += alloc_count;
-
-            if self.current_sample_iters >= self.iters_per_sample {
-                self.flush_sample();
-            }
-        }
+        self.accumulate_sample(duration_nanos, cpu_cycles, alloc_bytes, alloc_count);
     }
 
     /// Run an async benchmark closure within an existing tokio runtime
@@ -369,21 +351,7 @@ impl Bencher {
             (duration_nanos, cpu_cycles, alloc_bytes, alloc_count)
         };
 
-        self.total_iterations += 1;
-
-        if self.is_warmup {
-            self.warmup_times.push(duration_nanos);
-        } else {
-            self.current_sample_time_ns += duration_nanos;
-            self.current_sample_cycles += cpu_cycles as u64;
-            self.current_sample_iters += 1;
-            self.current_sample_alloc_bytes += alloc_bytes;
-            self.current_sample_alloc_count += alloc_count;
-
-            if self.current_sample_iters >= self.iters_per_sample {
-                self.flush_sample();
-            }
-        }
+        self.accumulate_sample(duration_nanos, cpu_cycles, alloc_bytes, alloc_count);
     }
 
     /// Flush current accumulated iterations as a single sample
@@ -546,7 +514,7 @@ mod tests {
         }
 
         let result = bencher.finish();
-        assert!(result.samples.len() > 0);
+        assert!(!result.samples.is_empty());
         assert!(result.samples.len() <= DEFAULT_SAMPLE_COUNT);
     }
 
