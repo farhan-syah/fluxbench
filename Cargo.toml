@@ -1,0 +1,97 @@
+[workspace]
+resolver = "2"
+members = [
+    "fluxbench",
+    "fluxbench-cli",
+    "fluxbench-core",
+    "fluxbench-ipc",
+    "fluxbench-logic",
+    "fluxbench-macros",
+    "fluxbench-report",
+    "fluxbench-stats",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ml-rust/fluxbench"
+keywords = ["benchmark", "performance", "testing", "statistics"]
+categories = ["development-tools::profiling", "development-tools::testing"]
+
+[workspace.dependencies]
+# Workspace crates
+fluxbench = { path = "fluxbench" }
+fluxbench-cli = { path = "fluxbench-cli" }
+fluxbench-core = { path = "fluxbench-core" }
+fluxbench-ipc = { path = "fluxbench-ipc" }
+fluxbench-logic = { path = "fluxbench-logic" }
+fluxbench-macros = { path = "fluxbench-macros" }
+fluxbench-report = { path = "fluxbench-report" }
+fluxbench-stats = { path = "fluxbench-stats" }
+
+# Serialization (Zero-Copy IPC)
+rkyv = { version = "0.7", features = ["validation", "strict"] }
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Parallelism
+rayon = "1.10"
+
+# Random number generation (for bootstrap)
+rand = "0.8"
+
+# Expression evaluation
+evalexpr = "11"
+
+# Progress reporting
+indicatif = "0.17"
+
+# Proc-macro utilities
+syn = { version = "2", features = ["full", "parsing", "printing"] }
+quote = "1"
+proc-macro2 = "1"
+
+# Discovery
+inventory = "0.3"
+
+# Hashing
+fxhash = "0.2"
+
+# Time utilities
+chrono = { version = "0.4", features = ["serde"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Regex for variable extraction
+regex = "1"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Configuration
+toml = "0.8"
+
+# Plotting (our internal crate)
+# plotr = { path = "../plotr" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+opt-level = 3
+
+[profile.bench]
+lto = "thin"
+codegen-units = 1

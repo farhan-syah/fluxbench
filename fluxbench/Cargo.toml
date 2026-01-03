@@ -1,0 +1,29 @@
+[package]
+name = "fluxbench"
+description = "Production-grade benchmarking for Rust - the industry standard"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+fluxbench-core.workspace = true
+fluxbench-macros.workspace = true
+fluxbench-stats.workspace = true
+fluxbench-logic.workspace = true
+fluxbench-ipc.workspace = true
+
+# Re-export for macros
+inventory.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+fluxbench-cli.workspace = true
+rand.workspace = true
+
+[[example]]
+name = "benchmarks"
+path = "examples/benchmarks.rs"

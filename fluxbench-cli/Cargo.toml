@@ -1,0 +1,39 @@
+[package]
+name = "fluxbench-cli"
+description = "FluxBench CLI - Benchmark supervisor and harness"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "fluxbench_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fluxbench"
+path = "src/main.rs"
+
+[dependencies]
+fluxbench-core.workspace = true
+fluxbench-ipc.workspace = true
+fluxbench-stats.workspace = true
+fluxbench-logic.workspace = true
+fluxbench-report.workspace = true
+
+clap.workspace = true
+tokio.workspace = true
+inventory.workspace = true
+indicatif.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+regex.workspace = true
+fxhash.workspace = true
+libc = "0.2"

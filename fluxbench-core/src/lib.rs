@@ -1,0 +1,123 @@
+//! FluxBench Core - Worker Runtime
+//!
+//! This crate provides the execution environment for benchmarks:
+//! - `Bencher` struct for iteration-based benchmarking
+//! - High-precision timing (RDTSC with Instant fallback)
+//! - Global allocator interceptor for memory tracking
+//! - CPU affinity pinning for stable TSC readings
+
+mod allocator;
+mod bencher;
+mod measure;
+mod worker;
+
+pub use allocator::{current_allocation, reset_allocation_counter, TrackingAllocator};
+pub use bencher::{run_benchmark_loop, Bencher, BenchmarkResult, IterationMode};
+pub use measure::{Instant, Timer};
+pub use worker::WorkerMain;
+
+/// Benchmark definition registered via `#[flux::bench]`
+#[derive(Debug, Clone)]
+pub struct BenchmarkDef {
+    /// Unique identifier
+    pub id: &'static str,
+    /// Human-readable name
+    pub name: &'static str,
+    /// Group this benchmark belongs to
+    pub group: &'static str,
+    /// Severity level for CI reporting
+    pub severity: Severity,
+    /// Regression threshold percentage
+    pub threshold: f64,
+    /// Absolute time budget in nanoseconds
+    pub budget_ns: Option<u64>,
+    /// Tags for filtering
+    pub tags: &'static [&'static str],
+    /// Function pointer to the wrapper
+    pub runner_fn: fn(&mut Bencher),
+    /// Source file path
+    pub file: &'static str,
+    /// Source line number
+    pub line: u32,
+    /// Module path
+    pub module_path: &'static str,
+}
+
+/// Severity levels for CI integration
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Severity {
+    /// Critical benchmark - regression fails the build
+    Critical,
+    /// Warning level - logged but doesn't fail
+    Warning,
+    /// Informational only
+    Info,
+}
+
+/// Group definition for organizing benchmarks
+#[derive(Debug, Clone)]
+pub struct GroupDef {
+    /// Group identifier
+    pub id: &'static str,
+    /// Human-readable description
+    pub description: &'static str,
+    /// Tags for filtering
+    pub tags: &'static [&'static str],
+    /// Parent group (for nested groups)
+    pub parent: Option<&'static str>,
+}
+
+/// Chart type for dashboard layout
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChartType {
+    /// Violin plot
+    Violin,
+    /// Bar chart
+    Bar,
+    /// Scatter plot
+    Scatter,
+    /// Line chart
+    Line,
+    /// Histogram
+    Histogram,
+}
+
+/// Chart definition for dashboard
+#[derive(Debug, Clone)]
+pub struct ChartDef {
+    /// Chart title
+    pub title: &'static str,
+    /// Chart type
+    pub chart_type: ChartType,
+    /// Grid position (row, col)
+    pub position: (u32, u32),
+    /// Items to display (benchmark IDs)
+    pub items: &'static [&'static str],
+    /// Optional target line
+    pub target_line: Option<f64>,
+}
+
+/// Report/dashboard definition
+#[derive(Debug, Clone)]
+pub struct ReportDef {
+    /// Dashboard title
+    pub title: &'static str,
+    /// Grid layout (rows, cols)
+    pub layout: (u32, u32),
+    /// Charts in the dashboard
+    pub charts: &'static [ChartDef],
+}
+
+// Collect all registered benchmarks
+inventory::collect!(BenchmarkDef);
+inventory::collect!(GroupDef);
+inventory::collect!(ReportDef);
+
+/// Anchor to prevent LTO from stripping inventory entries
+#[used]
+#[doc(hidden)]
+pub static REGISTRY_ANCHOR: fn() = || {
+    for _ in inventory::iter::<BenchmarkDef> {}
+    for _ in inventory::iter::<GroupDef> {}
+    for _ in inventory::iter::<ReportDef> {}
+};

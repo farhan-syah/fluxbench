@@ -1,0 +1,94 @@
+# Rust build artifacts
+/target
+**/target/
+debug/
+release/
+*.pdb
+
+# Cargo lock file 
+Cargo.lock
+
+# Backup files
+**/*.rs.bk
+**/*~
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.iml
+.project
+.classpath
+.settings/
+.history/
+
+# Rust analyzer
+rust-project.json
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Benchmark outputs and reports
+*.criterion
+criterion-reports/
+**/criterion/
+benchmarks/results/
+*.bench
+*.profdata
+*.profraw
+perf.data
+perf.data.old
+flamegraph.svg
+*.svg
+
+# Test artifacts
+*.test
+coverage/
+tarpaulin-report.html
+cobertura.xml
+lcov.info
+
+# Documentation build artifacts
+**/doc/
+target/doc/
+
+# Environment and configuration
+.env
+.env.local
+.env.*.local
+*.log
+
+# Python (if using Python bindings)
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+*.so
+
+# Profiling and performance analysis
+*.svg
+*.txt.gz
+*.folded
+callgrind.*
+massif.*
+cachegrind.*
+
+# Examples output
+examples/*.out
+examples/output/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+resources
