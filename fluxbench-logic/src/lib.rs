@@ -9,7 +9,7 @@ mod verification;
 
 pub use context::MetricContext;
 pub use graph::{DependencyGraph, GraphError};
-pub use synthetic::{SyntheticDef, SyntheticResult};
+pub use synthetic::{compute_synthetics, SyntheticDef, SyntheticResult};
 pub use verification::{
     aggregate_verifications, run_verifications, Severity, Verification, VerificationContext,
     VerificationResult, VerificationStatus, VerificationSummary,

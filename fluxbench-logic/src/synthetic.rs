@@ -3,20 +3,21 @@
 //! Computed metrics derived from benchmark results.
 
 use crate::context::{ContextError, MetricContext};
+use serde::{Deserialize, Serialize};
 
-/// Definition of a synthetic metric
+/// Definition of a synthetic metric registered via `#[flux::synthetic]`
 #[derive(Debug, Clone)]
 pub struct SyntheticDef {
     /// Unique identifier
-    pub id: String,
+    pub id: &'static str,
     /// Formula to compute the metric
-    pub formula: String,
+    pub formula: &'static str,
     /// Unit for display (e.g., "ns", "MB/s")
-    pub unit: Option<String>,
+    pub unit: Option<&'static str>,
 }
 
 /// Result of computing a synthetic metric
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyntheticResult {
     /// Metric identifier
     pub id: String,
@@ -29,7 +30,6 @@ pub struct SyntheticResult {
 }
 
 /// Compute all synthetic metrics
-#[allow(dead_code)]
 pub fn compute_synthetics(
     synthetics: &[SyntheticDef],
     context: &MetricContext,
@@ -37,11 +37,11 @@ pub fn compute_synthetics(
     synthetics
         .iter()
         .map(|s| {
-            context.evaluate(&s.formula).map(|value| SyntheticResult {
-                id: s.id.clone(),
+            context.evaluate(s.formula).map(|value| SyntheticResult {
+                id: s.id.to_string(),
                 value,
-                formula: s.formula.clone(),
-                unit: s.unit.clone(),
+                formula: s.formula.to_string(),
+                unit: s.unit.map(|u| u.to_string()),
             })
         })
         .collect()
@@ -58,9 +58,9 @@ mod tests {
         ctx.set("overhead", 20.0);
 
         let synthetics = vec![SyntheticDef {
-            id: "net_time".to_string(),
-            formula: "raw - overhead".to_string(),
-            unit: Some("ns".to_string()),
+            id: "net_time",
+            formula: "raw - overhead",
+            unit: Some("ns"),
         }];
 
         let results = compute_synthetics(&synthetics, &ctx);

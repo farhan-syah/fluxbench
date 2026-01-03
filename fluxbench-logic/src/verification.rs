@@ -192,16 +192,33 @@ pub fn run_verifications(
                         },
                     }
                 }
-                Err(e) => VerificationResult {
-                    id: v.id.clone(),
-                    expression: v.expression.clone(),
-                    status: VerificationStatus::Error {
-                        message: e.to_string(),
-                    },
-                    actual_value: None,
-                    severity: v.severity,
-                    message: format!("Evaluation error: {}", e),
-                },
+                Err(e) => {
+                    let error_msg = e.to_string();
+                    // Treat "variable not bound" errors as skipped (benchmark wasn't run)
+                    if error_msg.contains("Variable identifier is not bound") {
+                        VerificationResult {
+                            id: v.id.clone(),
+                            expression: v.expression.clone(),
+                            status: VerificationStatus::Skipped {
+                                missing_metrics: "benchmark not run".to_string(),
+                            },
+                            actual_value: None,
+                            severity: v.severity,
+                            message: "Skipped: required benchmarks not run".to_string(),
+                        }
+                    } else {
+                        VerificationResult {
+                            id: v.id.clone(),
+                            expression: v.expression.clone(),
+                            status: VerificationStatus::Error {
+                                message: error_msg.clone(),
+                            },
+                            actual_value: None,
+                            severity: v.severity,
+                            message: format!("Evaluation error: {}", error_msg),
+                        }
+                    }
+                }
             }
         })
         .collect()
