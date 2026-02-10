@@ -62,6 +62,9 @@ pub struct Bencher {
     total_iterations: u64,
     is_warmup: bool,
     warmup_times: Vec<u64>, // Raw timings during warmup for estimation
+
+    // === Cached runtime for iter_async fallback ===
+    cached_runtime: Option<tokio::runtime::Runtime>,
 }
 
 impl Bencher {
@@ -86,6 +89,7 @@ impl Bencher {
             total_iterations: 0,
             is_warmup: true,
             warmup_times: Vec::with_capacity(1000),
+            cached_runtime: None,
         }
     }
 
@@ -141,7 +145,7 @@ impl Bencher {
     fn accumulate_sample(
         &mut self,
         duration_nanos: u64,
-        cpu_cycles: u32,
+        cpu_cycles: u64,
         alloc_bytes: u64,
         alloc_count: u64,
     ) {
@@ -258,9 +262,9 @@ impl Bencher {
         // Stop timing
         let (total_nanos, total_cycles) = timer.stop();
 
-        // Per-iteration values
-        let per_iter_nanos = total_nanos / batch_size;
-        let per_iter_cycles = (total_cycles as u64 / batch_size) as u32;
+        // Per-iteration values (use f64 to avoid integer truncation for fast ops)
+        let per_iter_nanos = ((total_nanos as f64) / (batch_size as f64)).round() as u64;
+        let per_iter_cycles = ((total_cycles as f64) / (batch_size as f64)).round() as u64;
 
         // Collect allocation data (total for batch, then average)
         let (alloc_bytes, alloc_count) = if self.track_allocations {
@@ -333,10 +337,13 @@ impl Bencher {
                 (duration_nanos, cpu_cycles, alloc_bytes, alloc_count)
             })
         } else {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("Failed to create tokio runtime");
+            // Cache runtime across iterations to avoid per-iteration construction overhead
+            let rt = self.cached_runtime.get_or_insert_with(|| {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("Failed to create tokio runtime")
+            });
 
             let timer = Timer::start();
             let _ = std::hint::black_box(rt.block_on(f()));
@@ -364,7 +371,7 @@ impl Bencher {
 
         // Average values for this sample
         let avg_time_ns = self.current_sample_time_ns / n;
-        let avg_cycles = (self.current_sample_cycles / n) as u32;
+        let avg_cycles = self.current_sample_cycles / n;
         let avg_alloc_bytes = self.current_sample_alloc_bytes / n;
         let avg_alloc_count = (self.current_sample_alloc_count / n) as u32;
 

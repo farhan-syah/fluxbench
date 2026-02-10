@@ -42,9 +42,9 @@ pub struct CyclesStatistics {
     /// Standard deviation of cycles
     pub std_dev_cycles: f64,
     /// Minimum cycles observed
-    pub min_cycles: u32,
+    pub min_cycles: u64,
     /// Maximum cycles observed
-    pub max_cycles: u32,
+    pub max_cycles: u64,
     /// Cycles per nanosecond (approximates CPU frequency in GHz)
     pub cycles_per_ns: f64,
 }
@@ -157,7 +157,7 @@ impl SummaryStatistics {
 /// Compute CPU cycles statistics from raw cycle counts
 ///
 /// Takes parallel arrays of cycles and nanos to compute cycles_per_ns ratio.
-pub fn compute_cycles_stats(cycles: &[u32], nanos: &[f64]) -> CyclesStatistics {
+pub fn compute_cycles_stats(cycles: &[u64], nanos: &[f64]) -> CyclesStatistics {
     if cycles.is_empty() {
         return CyclesStatistics::default();
     }
@@ -271,7 +271,7 @@ mod tests {
 
     #[test]
     fn test_cycles_stats() {
-        let cycles = vec![3000u32, 3100, 2900, 3050, 2950];
+        let cycles = vec![3000u64, 3100, 2900, 3050, 2950];
         let nanos = vec![1000.0, 1033.0, 967.0, 1017.0, 983.0];
         let stats = compute_cycles_stats(&cycles, &nanos);
 
@@ -285,7 +285,7 @@ mod tests {
 
     #[test]
     fn test_cycles_stats_empty() {
-        let cycles: Vec<u32> = vec![];
+        let cycles: Vec<u64> = vec![];
         let nanos: Vec<f64> = vec![];
         let stats = compute_cycles_stats(&cycles, &nanos);
 

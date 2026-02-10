@@ -22,11 +22,17 @@ impl Instant {
     pub fn now() -> Self {
         #[cfg(target_arch = "x86_64")]
         {
-            // SAFETY: RDTSC is always safe on x86_64
-            let tsc = unsafe { std::arch::x86_64::_rdtsc() };
-            Self {
-                instant: std::time::Instant::now(),
-                tsc,
+            // SAFETY: RDTSC is always safe on x86_64.
+            // lfence serializes instruction flow so that RDTSC reads a
+            // consistent cycle counter (Intel SDM Vol. 3B §18.7.3).
+            unsafe {
+                std::arch::x86_64::_mm_lfence();
+                let tsc = std::arch::x86_64::_rdtsc();
+                std::arch::x86_64::_mm_lfence();
+                Self {
+                    instant: std::time::Instant::now(),
+                    tsc,
+                }
             }
         }
 
@@ -73,7 +79,10 @@ impl Timer {
     #[inline(always)]
     pub fn start() -> Self {
         #[cfg(target_arch = "x86_64")]
-        let cycles_start = unsafe { std::arch::x86_64::_rdtsc() };
+        let cycles_start = unsafe {
+            std::arch::x86_64::_mm_lfence();
+            std::arch::x86_64::_rdtsc()
+        };
         #[cfg(not(target_arch = "x86_64"))]
         let cycles_start = 0;
 
@@ -85,17 +94,20 @@ impl Timer {
 
     /// Stop the timer and return elapsed nanoseconds and cycles
     #[inline(always)]
-    pub fn stop(&self) -> (u64, u32) {
+    pub fn stop(&self) -> (u64, u64) {
         let elapsed = self.start.elapsed();
         let nanos = elapsed.as_nanos() as u64;
 
         #[cfg(target_arch = "x86_64")]
         let cycles = {
-            let now = unsafe { std::arch::x86_64::_rdtsc() };
-            (now.saturating_sub(self.cycles_start)) as u32
+            let now = unsafe {
+                std::arch::x86_64::_mm_lfence();
+                std::arch::x86_64::_rdtsc()
+            };
+            now.saturating_sub(self.cycles_start)
         };
         #[cfg(not(target_arch = "x86_64"))]
-        let cycles = 0u32;
+        let cycles = 0u64;
 
         (nanos, cycles)
     }

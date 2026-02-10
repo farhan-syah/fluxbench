@@ -32,8 +32,8 @@ mod tests {
 
     #[test]
     fn test_sample_size() {
-        // Sample must be exactly 24 bytes for cache efficiency
-        assert_eq!(std::mem::size_of::<Sample>(), 24);
+        // Sample is 32 bytes (u64 cpu_cycles avoids overflow for benchmarks >1s)
+        assert_eq!(std::mem::size_of::<Sample>(), 32);
     }
 
     #[test]

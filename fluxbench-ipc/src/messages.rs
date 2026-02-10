@@ -4,10 +4,14 @@
 
 use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 
-/// A single measurement sample (24 bytes, cache-aligned)
+/// A single measurement sample (32 bytes, cache-aligned).
 ///
 /// Compact representation optimized for batching and cache efficiency.
 /// All timing values are in nanoseconds.
+///
+/// # Layout history
+/// - Protocol v1: 24 bytes (`cpu_cycles` was `u32`).
+/// - Protocol v2+: 32 bytes (`cpu_cycles` widened to `u64` to avoid overflow beyond ~1 s at 4 GHz).
 #[derive(Debug, Clone, Copy, Archive, RkyvSerialize, RkyvDeserialize)]
 #[archive(check_bytes)]
 #[repr(C, align(8))]
@@ -18,15 +22,14 @@ pub struct Sample {
     pub alloc_bytes: u64,
     /// Number of allocations during this iteration
     pub alloc_count: u32,
-    /// CPU cycles (from RDTSC, truncated to u32 for space efficiency)
-    /// For sub-microsecond benchmarks, u32 is sufficient (4B cycles @ 4GHz = 1 second)
-    pub cpu_cycles: u32,
+    /// CPU cycles (from RDTSC). Full u64 avoids overflow for benchmarks >1s at 4GHz.
+    pub cpu_cycles: u64,
 }
 
 impl Sample {
     /// Create a new sample with the given measurements
     #[inline]
-    pub fn new(duration_nanos: u64, alloc_bytes: u64, alloc_count: u32, cpu_cycles: u32) -> Self {
+    pub fn new(duration_nanos: u64, alloc_bytes: u64, alloc_count: u32, cpu_cycles: u64) -> Self {
         Self {
             duration_nanos,
             alloc_bytes,
@@ -240,6 +243,33 @@ impl Default for BenchmarkConfig {
     }
 }
 
+impl BenchmarkConfig {
+    /// Validate configuration values, returning a description of the first error found.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.warmup_time_ns == 0 {
+            return Err("warmup_time_ns must be > 0".to_string());
+        }
+        if self.measurement_time_ns == 0 {
+            return Err("measurement_time_ns must be > 0".to_string());
+        }
+        if self.timeout_ns > 0 && self.timeout_ns < self.measurement_time_ns {
+            return Err(format!(
+                "timeout_ns ({}) must be >= measurement_time_ns ({})",
+                self.timeout_ns, self.measurement_time_ns
+            ));
+        }
+        if let (Some(min), Some(max)) = (self.min_iterations, self.max_iterations) {
+            if max < min {
+                return Err(format!(
+                    "max_iterations ({}) must be >= min_iterations ({})",
+                    max, min
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 // Helper functions
 
 fn num_cpus() -> u32 {
@@ -289,6 +319,34 @@ mod tests {
         assert_eq!(sample.alloc_bytes, 0);
         assert_eq!(sample.alloc_count, 0);
         assert_eq!(sample.cpu_cycles, 0);
+    }
+
+    #[test]
+    fn test_benchmark_config_validate_default() {
+        assert!(BenchmarkConfig::default().validate().is_ok());
+    }
+
+    #[test]
+    fn test_benchmark_config_validate_zero_warmup() {
+        let mut config = BenchmarkConfig::default();
+        config.warmup_time_ns = 0;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_benchmark_config_validate_timeout_lt_measurement() {
+        let mut config = BenchmarkConfig::default();
+        config.timeout_ns = 1_000_000; // 1ms
+        config.measurement_time_ns = 5_000_000_000; // 5s
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_benchmark_config_validate_max_lt_min() {
+        let mut config = BenchmarkConfig::default();
+        config.min_iterations = Some(200);
+        config.max_iterations = Some(50);
+        assert!(config.validate().is_err());
     }
 
     #[test]

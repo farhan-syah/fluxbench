@@ -129,8 +129,8 @@ pub struct BenchmarkMetrics {
     // CPU cycles metrics (x86_64 only, 0 on other platforms)
     pub mean_cycles: f64,
     pub median_cycles: f64,
-    pub min_cycles: u32,
-    pub max_cycles: u32,
+    pub min_cycles: u64,
+    pub max_cycles: u64,
     pub cycles_per_ns: f64,
 }
 

@@ -133,7 +133,7 @@ fn test_ab_comparison() {
 /// Test cycles statistics
 #[test]
 fn test_cycles_statistics() {
-    let cycles: Vec<u32> = vec![3000, 3100, 2900, 3050, 2950];
+    let cycles: Vec<u64> = vec![3000, 3100, 2900, 3050, 2950];
     let nanos: Vec<f64> = vec![1000.0, 1033.0, 967.0, 1017.0, 983.0];
 
     let stats = compute_cycles_stats(&cycles, &nanos);

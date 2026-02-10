@@ -81,7 +81,7 @@ pub struct BenchExecutionResult {
     pub status: BenchmarkStatus,
     pub samples: Vec<f64>,
     /// CPU cycles per sample (parallel with samples)
-    pub cpu_cycles: Vec<u32>,
+    pub cpu_cycles: Vec<u64>,
     pub alloc_bytes: u64,
     pub alloc_count: u64,
     pub duration_ns: u64,
@@ -155,7 +155,7 @@ impl Executor {
                     .collect();
 
                 // Extract CPU cycles (parallel array with samples)
-                let cpu_cycles: Vec<u32> =
+                let cpu_cycles: Vec<u64> =
                     bench_result.samples.iter().map(|s| s.cpu_cycles).collect();
 
                 // Sum allocations
@@ -326,7 +326,7 @@ impl IsolatedExecutor {
             .collect();
 
         // Extract CPU cycles
-        let cpu_cycles: Vec<u32> = ipc_result.samples.iter().map(|s| s.cpu_cycles).collect();
+        let cpu_cycles: Vec<u64> = ipc_result.samples.iter().map(|s| s.cpu_cycles).collect();
 
         // Sum allocations
         let alloc_bytes: u64 = ipc_result.samples.iter().map(|s| s.alloc_bytes).sum();

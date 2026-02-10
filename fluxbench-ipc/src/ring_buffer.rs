@@ -133,24 +133,17 @@ impl SampleRingBuffer {
         batch
     }
 
-    /// Get current time in nanoseconds
+    /// Get current time in nanoseconds (wall-clock).
     ///
-    /// Uses RDTSC on x86_64 for minimal overhead, falls back to Instant otherwise.
+    /// Uses `Instant` on all platforms for consistent units.
+    /// This is only used for heartbeat timing, not benchmark measurement,
+    /// so the ~20ns overhead of Instant is negligible.
     #[inline(always)]
     fn now_ns() -> u64 {
-        #[cfg(target_arch = "x86_64")]
-        {
-            // SAFETY: RDTSC is always safe to call on x86_64
-            unsafe { std::arch::x86_64::_rdtsc() }
-        }
-
-        #[cfg(not(target_arch = "x86_64"))]
-        {
-            use std::time::Instant;
-            static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
-            let start = START.get_or_init(Instant::now);
-            start.elapsed().as_nanos() as u64
-        }
+        use std::time::Instant;
+        static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+        let start = START.get_or_init(Instant::now);
+        start.elapsed().as_nanos() as u64
     }
 }
 
@@ -189,25 +182,26 @@ mod tests {
     fn test_flush_on_byte_limit() {
         let mut buffer = SampleRingBuffer::new("test");
 
-        // Calculate how many samples fit in MAX_BATCH_BYTES
-        // Sample is 24 bytes, MAX_BATCH_BYTES is 64KB = 65536 bytes
-        // 65536 / 24 = 2730.67, so flush triggers at 2731 samples
-        let samples_per_byte_limit = MAX_BATCH_BYTES / std::mem::size_of::<Sample>();
+        // Calculate how many samples fit below MAX_BATCH_BYTES.
+        // Flush triggers when estimated_bytes() >= MAX_BATCH_BYTES.
+        // With 32-byte Sample: 65536 / 32 = 2048 exactly, so the 2048th
+        // sample hits the limit. Push one fewer without flush.
+        let samples_before_flush = MAX_BATCH_BYTES / std::mem::size_of::<Sample>();
 
         // Push samples until just before byte limit
-        for i in 0..samples_per_byte_limit {
+        for i in 0..(samples_before_flush - 1) {
             let sample = Sample::timing_only(i as u64);
             let result = buffer.push(sample);
             assert!(result.is_none(), "unexpected flush at sample {}", i);
         }
 
-        // Push one more, should trigger flush due to byte limit
+        // This push should trigger flush due to byte limit
         let sample = Sample::timing_only(9999);
         let batch = buffer.push(sample);
         assert!(batch.is_some());
 
         let batch = batch.unwrap();
-        assert_eq!(batch.samples.len(), samples_per_byte_limit + 1);
+        assert_eq!(batch.samples.len(), samples_before_flush);
         assert_eq!(batch.flush_reason, FlushReason::ByteLimitReached);
         assert_eq!(batch.batch_sequence, 0);
 
