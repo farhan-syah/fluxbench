@@ -8,14 +8,10 @@
 //! - Tag inclusion/exclusion
 //!
 //! Ordering: Benchmarks are sorted alphabetically by ID for deterministic execution.
-//!
-//! Note: This module provides utilities for the CLI but filtering is currently
-//! done inline in lib.rs. These are available for future CLI refactoring.
 
 use fluxbench_core::BenchmarkDef;
 
 /// Execution plan for benchmarks
-#[allow(dead_code)]
 pub struct ExecutionPlan {
     /// Ordered list of benchmarks to run
     pub benchmarks: Vec<&'static BenchmarkDef>,
@@ -24,7 +20,6 @@ pub struct ExecutionPlan {
 /// Build execution plan from discovered benchmarks
 ///
 /// Filters benchmarks based on CLI options and returns them in deterministic order.
-#[allow(dead_code)]
 pub fn build_plan(
     benchmarks: impl IntoIterator<Item = &'static BenchmarkDef>,
     filter: Option<&regex::Regex>,

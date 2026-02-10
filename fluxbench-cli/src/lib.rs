@@ -216,43 +216,24 @@ fn run_worker_mode() -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("Worker error: {}", e))
 }
 
-/// Filter benchmarks based on CLI options
-fn filter_benchmarks<'a>(cli: &Cli, benchmarks: &'a [&'a BenchmarkDef]) -> Vec<&'a BenchmarkDef> {
-    let filter_re = Regex::new(&cli.filter).unwrap_or_else(|_| Regex::new(".*").unwrap());
+/// Filter benchmarks based on CLI options using the planner module.
+///
+/// Returns benchmarks sorted alphabetically by ID for deterministic execution.
+fn filter_benchmarks(
+    cli: &Cli,
+    benchmarks: &[&'static BenchmarkDef],
+) -> Vec<&'static BenchmarkDef> {
+    let filter_re = Regex::new(&cli.filter).ok();
 
-    benchmarks
-        .iter()
-        .copied()
-        .filter(|b| {
-            // Filter by regex
-            if !filter_re.is_match(b.id) {
-                return false;
-            }
+    let plan = planner::build_plan(
+        benchmarks.iter().copied(),
+        filter_re.as_ref(),
+        cli.group.as_deref(),
+        cli.tag.as_deref(),
+        cli.skip_tag.as_deref(),
+    );
 
-            // Filter by group
-            if let Some(ref group) = cli.group {
-                if b.group != group {
-                    return false;
-                }
-            }
-
-            // Filter by tag
-            if let Some(ref tag) = cli.tag {
-                if !b.tags.contains(&tag.as_str()) {
-                    return false;
-                }
-            }
-
-            // Skip by tag
-            if let Some(ref skip_tag) = cli.skip_tag {
-                if b.tags.contains(&skip_tag.as_str()) {
-                    return false;
-                }
-            }
-
-            true
-        })
-        .collect()
+    plan.benchmarks
 }
 
 fn list_benchmarks(cli: &Cli) -> anyhow::Result<()> {
