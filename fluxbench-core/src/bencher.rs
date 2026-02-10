@@ -434,12 +434,14 @@ impl Bencher {
 /// * `runner_fn` - Function that calls the benchmark under test
 /// * `warmup_time_ns` - How long to run warmup phase (nanoseconds)
 /// * `measurement_time_ns` - How long to run measurement phase (nanoseconds)
-/// * `max_iterations` - Optional cap on total iterations
+/// * `min_iterations` - Optional minimum measurement iterations before completion
+/// * `max_iterations` - Optional cap on measurement iterations
 pub fn run_benchmark_loop<F>(
     mut bencher: Bencher,
     mut runner_fn: F,
     warmup_time_ns: u64,
     measurement_time_ns: u64,
+    min_iterations: Option<u64>,
     max_iterations: Option<u64>,
 ) -> BenchmarkResult
 where
@@ -460,21 +462,31 @@ where
 
     // Measurement phase - run until we have enough samples or time runs out
     let measure_start = Instant::now();
+    let measurement_start_iterations = bencher.iteration_count();
+    let min_iterations = min_iterations.unwrap_or(0);
+    let max_iterations = max_iterations.unwrap_or(u64::MAX).max(min_iterations);
 
-    while !bencher.has_enough_samples() {
-        // Time limit check
-        if measure_start.elapsed().as_nanos() >= measurement_time_ns as u128 {
+    loop {
+        let measurement_iterations = bencher
+            .iteration_count()
+            .saturating_sub(measurement_start_iterations);
+        let min_iterations_met = measurement_iterations >= min_iterations;
+        let max_iterations_reached = measurement_iterations >= max_iterations;
+        let has_enough_samples = bencher.has_enough_samples();
+        let time_limit_reached = measure_start.elapsed().as_nanos() >= measurement_time_ns as u128;
+
+        if max_iterations_reached {
+            break;
+        }
+
+        // Respect both quality controls:
+        // - stop when sample target reached AND minimum iterations satisfied, or
+        // - stop on time budget only after minimum iterations are satisfied.
+        if (has_enough_samples || time_limit_reached) && min_iterations_met {
             break;
         }
 
         runner_fn(&mut bencher);
-
-        // Check max iterations
-        if let Some(max) = max_iterations {
-            if bencher.iteration_count() >= max {
-                break;
-            }
-        }
     }
 
     bencher.finish()
@@ -524,7 +536,7 @@ mod tests {
 
         for _ in 0..5 {
             bencher.iter_with_setup(
-                || vec![1, 2, 3, 4, 5], // Setup: create vec
+                || vec![1, 2, 3, 4, 5],    // Setup: create vec
                 |v| v.iter().sum::<i32>(), // Measure: sum
             );
         }
@@ -550,5 +562,21 @@ mod tests {
         let result = bencher.finish();
         assert_eq!(result.samples.len(), 10);
         assert_eq!(result.iterations, 50);
+    }
+
+    #[test]
+    fn test_run_loop_respects_min_iterations() {
+        let bencher = Bencher::with_config(false, 10);
+        let result = run_benchmark_loop(bencher, |b| b.iter(|| 42_u64), 0, 0, Some(100), Some(100));
+
+        assert_eq!(result.iterations, 100);
+    }
+
+    #[test]
+    fn test_run_loop_clamps_min_to_max() {
+        let bencher = Bencher::with_config(false, 10);
+        let result = run_benchmark_loop(bencher, |b| b.iter(|| 7_u64), 0, 0, Some(200), Some(50));
+
+        assert_eq!(result.iterations, 200);
     }
 }

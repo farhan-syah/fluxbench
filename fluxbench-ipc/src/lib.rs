@@ -7,7 +7,7 @@ mod framing;
 mod messages;
 mod ring_buffer;
 
-pub use framing::{read_frame, write_frame, FrameError, FrameReader, FrameWriter, MAX_FRAME_SIZE};
+pub use framing::{FrameError, FrameReader, FrameWriter, MAX_FRAME_SIZE, read_frame, write_frame};
 pub use messages::{
     BenchmarkConfig, FailureKind, FlushReason, Sample, SampleBatch, SupervisorCommand,
     WorkerCapabilities, WorkerMessage,

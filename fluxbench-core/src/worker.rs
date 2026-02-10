@@ -3,7 +3,7 @@
 //! Handles the worker side of the supervisor-worker architecture.
 
 use crate::measure::pin_to_cpu;
-use crate::{run_benchmark_loop, BenchmarkDef, Bencher};
+use crate::{Bencher, BenchmarkDef, run_benchmark_loop};
 use fluxbench_ipc::{
     BenchmarkConfig, FailureKind, FrameReader, FrameWriter, SampleRingBuffer, SupervisorCommand,
     WorkerCapabilities, WorkerMessage,
@@ -93,6 +93,7 @@ impl WorkerMain {
                 |b| (bench.runner_fn)(b),
                 config.warmup_time_ns,
                 config.measurement_time_ns,
+                config.min_iterations,
                 config.max_iterations,
             )
         }));
@@ -102,15 +103,13 @@ impl WorkerMain {
                 // Send samples in batches
                 for sample in bench_result.samples {
                     if let Some(batch) = ring_buffer.push(sample) {
-                        self.writer
-                            .write(&WorkerMessage::SampleBatch(batch))?;
+                        self.writer.write(&WorkerMessage::SampleBatch(batch))?;
                     }
                 }
 
                 // Flush remaining samples
                 if let Some(batch) = ring_buffer.flush_final() {
-                    self.writer
-                        .write(&WorkerMessage::SampleBatch(batch))?;
+                    self.writer.write(&WorkerMessage::SampleBatch(batch))?;
                 }
 
                 // Send completion
