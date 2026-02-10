@@ -1,6 +1,10 @@
 //! Worker Process Entry Point
 //!
 //! Handles the worker side of the supervisor-worker architecture.
+//!
+//! On Unix, uses fd 3/4 for IPC (set via `FLUX_IPC_FD` env var) and installs
+//! a SIGTERM handler for graceful shutdown. On non-Unix, falls back to
+//! stdin/stdout and skips signal handling.
 
 use crate::measure::pin_to_cpu;
 use crate::{Bencher, BenchmarkDef, run_benchmark_loop};
@@ -8,8 +12,10 @@ use fluxbench_ipc::{
     BenchmarkConfig, FailureKind, FrameReader, FrameWriter, SampleRingBuffer, SupervisorCommand,
     WorkerCapabilities, WorkerMessage,
 };
-use std::os::unix::io::FromRawFd;
 use std::sync::atomic::{AtomicBool, Ordering};
+
+#[cfg(unix)]
+use std::os::unix::io::FromRawFd;
 
 /// Global flag set by SIGTERM handler to request graceful shutdown.
 static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -21,6 +27,7 @@ pub fn shutdown_requested() -> bool {
 
 /// Install a SIGTERM handler that sets the `SHUTDOWN_REQUESTED` flag.
 /// The handler is async-signal-safe (only sets an atomic).
+#[cfg(unix)]
 fn install_sigterm_handler() {
     unsafe {
         let mut sa: libc::sigaction = std::mem::zeroed();
@@ -31,17 +38,27 @@ fn install_sigterm_handler() {
     }
 }
 
+#[cfg(unix)]
 extern "C" fn sigterm_handler(_sig: libc::c_int) {
     SHUTDOWN_REQUESTED.store(true, Ordering::Relaxed);
 }
 
+/// No-op on non-Unix (no SIGTERM equivalent).
+#[cfg(not(unix))]
+fn install_sigterm_handler() {}
+
 /// IPC transport: either inherited fd pair or stdin/stdout fallback.
 enum IpcTransport {
-    Fds { read_fd: i32, write_fd: i32 },
+    #[cfg(unix)]
+    Fds {
+        read_fd: i32,
+        write_fd: i32,
+    },
     Stdio,
 }
 
 fn detect_transport() -> IpcTransport {
+    #[cfg(unix)]
     if let Ok(val) = std::env::var("FLUX_IPC_FD") {
         let parts: Vec<&str> = val.split(',').collect();
         if parts.len() == 2 {
@@ -52,7 +69,9 @@ fn detect_transport() -> IpcTransport {
                 };
             }
         }
-        eprintln!("fluxbench: warning: invalid FLUX_IPC_FD={val:?}, falling back to stdio");
+        eprintln!(
+            "fluxbench: warning: invalid FLUX_IPC_FD={val:?} (expected format: <read_fd>,<write_fd>), falling back to stdio"
+        );
     }
     IpcTransport::Stdio
 }
@@ -67,6 +86,7 @@ impl WorkerMain {
     /// Create a new worker, using fd 3/4 if FLUX_IPC_FD is set, otherwise stdin/stdout.
     pub fn new() -> Self {
         match detect_transport() {
+            #[cfg(unix)]
             IpcTransport::Fds { read_fd, write_fd } => {
                 let read_file = unsafe { std::fs::File::from_raw_fd(read_fd) };
                 let write_file = unsafe { std::fs::File::from_raw_fd(write_fd) };

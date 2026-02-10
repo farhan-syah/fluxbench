@@ -1,6 +1,15 @@
 //! Supervisor Process
 //!
 //! Manages worker processes and aggregates results via IPC.
+//!
+//! On Unix, uses dedicated file descriptors (fd 3/4) for IPC, leaving
+//! stdout/stderr free for user benchmark code. On non-Unix platforms,
+//! falls back to stdin/stdout pipes (user `println!` may corrupt the
+//! protocol stream in this mode).
+//!
+//! **Timeout behavior:** On Unix, sends SIGTERM for graceful shutdown then
+//! drains pending samples (500ms window) before SIGKILL. On non-Unix,
+//! kills immediately without draining — partial samples are lost.
 
 use fluxbench_core::BenchmarkDef;
 use fluxbench_ipc::{
@@ -10,11 +19,14 @@ use fluxbench_ipc::{
 use rayon::ThreadPoolBuilder;
 use rayon::prelude::*;
 use std::env;
-use std::os::unix::io::{FromRawFd, RawFd};
-use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 use thiserror::Error;
+
+#[cfg(unix)]
+use std::os::unix::io::{FromRawFd, RawFd};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 
 #[derive(Debug, Error)]
 pub enum SupervisorError {
@@ -60,6 +72,8 @@ pub enum IpcBenchmarkStatus {
     Crashed { message: String },
 }
 
+// ─── Platform-specific poll ──────────────────────────────────────────────────
+
 /// Result of polling for data
 #[derive(Debug)]
 enum PollResult {
@@ -69,8 +83,9 @@ enum PollResult {
     Error(std::io::Error),
 }
 
-/// Wait for data to be available on a file descriptor with timeout
-fn wait_for_data(fd: i32, timeout_ms: i32) -> PollResult {
+/// Wait for data to be available on a raw fd with timeout (Unix: `poll(2)`).
+#[cfg(unix)]
+fn wait_for_data_fd(fd: i32, timeout_ms: i32) -> PollResult {
     let mut pollfd = libc::pollfd {
         fd,
         events: libc::POLLIN,
@@ -83,26 +98,24 @@ fn wait_for_data(fd: i32, timeout_ms: i32) -> PollResult {
         PollResult::Error(std::io::Error::last_os_error())
     } else if result == 0 {
         PollResult::Timeout
+    } else if pollfd.revents & libc::POLLIN != 0 {
+        PollResult::DataAvailable
+    } else if pollfd.revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL) != 0 {
+        PollResult::PipeClosed
     } else {
-        // Check if data is available (even if pipe is closing, there might be data)
-        if pollfd.revents & libc::POLLIN != 0 {
-            PollResult::DataAvailable
-        } else if pollfd.revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL) != 0 {
-            PollResult::PipeClosed
-        } else {
-            PollResult::Timeout
-        }
+        PollResult::Timeout
     }
 }
 
-/// Create a pipe pair, returning (read_fd, write_fd).
+// ─── Platform-specific pipe/fd helpers (Unix only) ───────────────────────────
+
+#[cfg(unix)]
 fn create_pipe() -> Result<(RawFd, RawFd), std::io::Error> {
     let mut fds = [0 as RawFd; 2];
     let ret = unsafe { libc::pipe(fds.as_mut_ptr()) };
     if ret != 0 {
         return Err(std::io::Error::last_os_error());
     }
-    // Set close-on-exec on both ends by default; we'll clear it for the ones we want to pass.
     for &fd in &fds {
         unsafe {
             let flags = libc::fcntl(fd, libc::F_GETFD);
@@ -112,7 +125,7 @@ fn create_pipe() -> Result<(RawFd, RawFd), std::io::Error> {
     Ok((fds[0], fds[1]))
 }
 
-/// Close a raw file descriptor.
+#[cfg(unix)]
 fn close_fd(fd: RawFd) {
     unsafe {
         libc::close(fd);
@@ -120,6 +133,7 @@ fn close_fd(fd: RawFd) {
 }
 
 /// Send SIGTERM to a process. Returns `Err` if the signal could not be delivered.
+#[cfg(unix)]
 fn send_sigterm(pid: u32) -> Result<(), std::io::Error> {
     let ret = unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };
     if ret == -1 {
@@ -129,28 +143,39 @@ fn send_sigterm(pid: u32) -> Result<(), std::io::Error> {
     }
 }
 
-/// Worker process handle
+// ─── WorkerHandle ────────────────────────────────────────────────────────────
+
+/// Worker process handle.
+///
+/// Wraps the IPC reader/writer as trait objects so both the Unix (File-backed)
+/// and non-Unix (ChildStdin/ChildStdout-backed) paths share the same struct.
+/// Trait objects are bounded by `Send` because the handle may be moved across
+/// threads in the supervisor's `rayon` thread pool.
 pub struct WorkerHandle {
     child: Child,
-    reader: FrameReader<std::fs::File>,
-    writer: FrameWriter<std::fs::File>,
+    reader: FrameReader<Box<dyn std::io::Read + Send>>,
+    writer: FrameWriter<Box<dyn std::io::Write + Send>>,
     capabilities: Option<WorkerCapabilities>,
     timeout: Duration,
-    msg_read_fd: RawFd,
+    /// Raw fd for `poll(2)` (Unix). On non-Unix this is unused (-1).
+    poll_fd: i32,
 }
 
 impl WorkerHandle {
-    /// Spawn a new worker process using fd 3/4 for IPC.
+    /// Spawn a new worker process.
     pub fn spawn(timeout: Duration) -> Result<Self, SupervisorError> {
         let binary = env::current_exe().map_err(SupervisorError::SpawnFailed)?;
         Self::spawn_impl(&binary, timeout)
     }
 
-    /// Spawn a worker for a specific binary (for testing)
+    /// Spawn a worker for a specific binary (for testing).
     pub fn spawn_binary(binary: &str, timeout: Duration) -> Result<Self, SupervisorError> {
         Self::spawn_impl(binary.as_ref(), timeout)
     }
 
+    // ── Unix spawn: fd 3/4, stdout free for user code ────────────────────
+
+    #[cfg(unix)]
     fn spawn_impl(binary: &std::path::Path, timeout: Duration) -> Result<Self, SupervisorError> {
         // cmd_pipe: supervisor writes commands → worker reads from fd 3
         let (cmd_read, cmd_write) = create_pipe()?;
@@ -175,25 +200,21 @@ impl WorkerHandle {
         // In the child: dup cmd_read→3, msg_write→4, close originals.
         unsafe {
             command.pre_exec(move || {
-                // Move cmd_read to fd 3
                 if cmd_read != 3 {
                     libc::dup2(cmd_read, 3);
                     libc::close(cmd_read);
                 }
-                // Clear close-on-exec for fd 3
                 let flags = libc::fcntl(3, libc::F_GETFD);
                 libc::fcntl(3, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
 
-                // Move msg_write to fd 4
                 if msg_write != 4 {
                     libc::dup2(msg_write, 4);
                     libc::close(msg_write);
                 }
-                // Clear close-on-exec for fd 4
                 let flags = libc::fcntl(4, libc::F_GETFD);
                 libc::fcntl(4, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
 
-                // Close the parent-side ends that leaked into the child
+                // Close parent-side ends that leaked into the child
                 libc::close(cmd_write);
                 libc::close(msg_read);
 
@@ -212,27 +233,55 @@ impl WorkerHandle {
             }
         };
 
-        // Close the child-side ends in the parent
+        // Close child-side ends in the parent
         close_fd(cmd_read);
         close_fd(msg_write);
 
-        // Wrap parent-side ends in Files
-        let writer_file = unsafe { std::fs::File::from_raw_fd(cmd_write) };
+        let poll_fd = msg_read;
         let reader_file = unsafe { std::fs::File::from_raw_fd(msg_read) };
-        let msg_read_fd = msg_read;
+        let writer_file = unsafe { std::fs::File::from_raw_fd(cmd_write) };
 
         let mut handle = Self {
             child,
-            reader: FrameReader::new(reader_file),
-            writer: FrameWriter::new(writer_file),
+            reader: FrameReader::new(Box::new(reader_file) as Box<dyn std::io::Read + Send>),
+            writer: FrameWriter::new(Box::new(writer_file) as Box<dyn std::io::Write + Send>),
             capabilities: None,
             timeout,
-            msg_read_fd,
+            poll_fd,
         };
 
         handle.wait_for_hello()?;
         Ok(handle)
     }
+
+    // ── Non-Unix spawn: stdin/stdout pipes (fallback) ────────────────────
+
+    #[cfg(not(unix))]
+    fn spawn_impl(binary: &std::path::Path, timeout: Duration) -> Result<Self, SupervisorError> {
+        let mut child = Command::new(binary)
+            .arg("--flux-worker")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()?;
+
+        let stdin = child.stdin.take().expect("stdin should be available");
+        let stdout = child.stdout.take().expect("stdout should be available");
+
+        let mut handle = Self {
+            child,
+            reader: FrameReader::new(Box::new(stdout) as Box<dyn std::io::Read + Send>),
+            writer: FrameWriter::new(Box::new(stdin) as Box<dyn std::io::Write + Send>),
+            capabilities: None,
+            timeout,
+            poll_fd: -1,
+        };
+
+        handle.wait_for_hello()?;
+        Ok(handle)
+    }
+
+    // ── Shared logic ─────────────────────────────────────────────────────
 
     /// Wait for Hello message from worker and validate protocol version
     fn wait_for_hello(&mut self) -> Result<(), SupervisorError> {
@@ -267,22 +316,18 @@ impl WorkerHandle {
         bench_id: &str,
         config: &BenchmarkConfig,
     ) -> Result<IpcBenchmarkResult, SupervisorError> {
-        // Send run command
         self.writer.write(&SupervisorCommand::Run {
             bench_id: bench_id.to_string(),
             config: config.clone(),
         })?;
 
-        // Collect all sample batches
         let mut all_samples = Vec::new();
         let start = Instant::now();
 
         loop {
-            // Check timeout
             let remaining = self.timeout.saturating_sub(start.elapsed());
             if remaining.is_zero() {
-                // Graceful timeout: SIGTERM → drain → SIGKILL
-                return self.handle_timeout(bench_id, all_samples);
+                return self.handle_timeout(all_samples);
             }
 
             // Check if there's buffered data, or poll for new data.
@@ -295,37 +340,10 @@ impl WorkerHandle {
                     ));
                 }
             } else {
-                let poll_timeout = remaining.min(Duration::from_millis(100));
-                let poll_result = wait_for_data(self.msg_read_fd, poll_timeout.as_millis() as i32);
-
-                match poll_result {
-                    PollResult::DataAvailable => {
-                        if !self.is_alive() {
-                            return Err(SupervisorError::WorkerCrashed(
-                                "Worker process crashed with data in pipe".to_string(),
-                            ));
-                        }
-                    }
-                    PollResult::Timeout => {
-                        if !self.is_alive() {
-                            return Err(SupervisorError::WorkerCrashed(
-                                "Worker process exited unexpectedly".to_string(),
-                            ));
-                        }
-                        continue;
-                    }
-                    PollResult::PipeClosed => {
-                        return Err(SupervisorError::WorkerCrashed(
-                            "Worker pipe closed unexpectedly".to_string(),
-                        ));
-                    }
-                    PollResult::Error(e) => {
-                        return Err(SupervisorError::WorkerCrashed(format!("Pipe error: {}", e)));
-                    }
-                }
+                self.wait_for_worker_data(remaining)?;
             }
 
-            // Read next message (blocking — poll above confirmed data is available)
+            // Read next message (blocking — poll/sleep above confirmed data is available)
             let msg: WorkerMessage = match self.reader.read::<WorkerMessage>() {
                 Ok(msg) => msg,
                 Err(FrameError::EndOfStream) => {
@@ -347,10 +365,7 @@ impl WorkerHandle {
                 WorkerMessage::SampleBatch(batch) => {
                     all_samples.extend(batch.samples);
                 }
-                WorkerMessage::WarmupComplete { .. } => {
-                    continue;
-                }
-                WorkerMessage::Progress { .. } => {
+                WorkerMessage::WarmupComplete { .. } | WorkerMessage::Progress { .. } => {
                     continue;
                 }
                 WorkerMessage::Complete {
@@ -393,10 +408,58 @@ impl WorkerHandle {
         }
     }
 
-    /// Handle timeout: send SIGTERM, drain remaining messages for 500ms, then SIGKILL.
+    /// Wait for data from the worker, checking liveness periodically.
+    ///
+    /// On Unix this uses `poll(2)` on the message fd.
+    /// On non-Unix this uses a polling sleep loop (less efficient but portable).
+    #[cfg(unix)]
+    fn wait_for_worker_data(&mut self, remaining: Duration) -> Result<(), SupervisorError> {
+        let poll_timeout = remaining.min(Duration::from_millis(100));
+        match wait_for_data_fd(self.poll_fd, poll_timeout.as_millis() as i32) {
+            PollResult::DataAvailable => {
+                if !self.is_alive() {
+                    return Err(SupervisorError::WorkerCrashed(
+                        "Worker process crashed with data in pipe".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            PollResult::Timeout => {
+                if !self.is_alive() {
+                    return Err(SupervisorError::WorkerCrashed(
+                        "Worker process exited unexpectedly".to_string(),
+                    ));
+                }
+                // Signal caller to re-loop (no data yet)
+                Ok(())
+            }
+            PollResult::PipeClosed => Err(SupervisorError::WorkerCrashed(
+                "Worker pipe closed unexpectedly".to_string(),
+            )),
+            PollResult::Error(e) => {
+                Err(SupervisorError::WorkerCrashed(format!("Pipe error: {}", e)))
+            }
+        }
+    }
+
+    #[cfg(not(unix))]
+    fn wait_for_worker_data(&mut self, _remaining: Duration) -> Result<(), SupervisorError> {
+        // Without poll(2), sleep briefly then check liveness.
+        // The subsequent blocking read will pick up data.
+        std::thread::sleep(Duration::from_millis(10));
+        if !self.is_alive() {
+            return Err(SupervisorError::WorkerCrashed(
+                "Worker process exited unexpectedly".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Handle timeout: on Unix send SIGTERM → drain 500ms → SIGKILL.
+    /// On non-Unix just kill immediately.
+    #[cfg(unix)]
     fn handle_timeout(
         &mut self,
-        _bench_id: &str,
         mut samples: Vec<Sample>,
     ) -> Result<IpcBenchmarkResult, SupervisorError> {
         // Send SIGTERM for graceful shutdown (ignore error — worker may already be dead)
@@ -410,30 +473,37 @@ impl WorkerHandle {
                 break;
             }
 
-            match wait_for_data(self.msg_read_fd, remaining.as_millis() as i32) {
-                PollResult::DataAvailable => {
-                    match self.reader.read::<WorkerMessage>() {
-                        Ok(WorkerMessage::SampleBatch(batch)) => {
-                            samples.extend(batch.samples);
-                        }
-                        Ok(WorkerMessage::Complete { .. }) => {
-                            // Worker finished in time after SIGTERM
-                            break;
-                        }
-                        _ => break,
+            match wait_for_data_fd(self.poll_fd, remaining.as_millis() as i32) {
+                PollResult::DataAvailable => match self.reader.read::<WorkerMessage>() {
+                    Ok(WorkerMessage::SampleBatch(batch)) => {
+                        samples.extend(batch.samples);
                     }
-                }
+                    Ok(WorkerMessage::Complete { .. }) => break,
+                    _ => break,
+                },
                 PollResult::PipeClosed => break,
                 _ => break,
             }
         }
 
-        // Force kill if still alive
         if self.is_alive() {
             let _ = self.child.kill();
             let _ = self.child.wait();
         }
 
+        Err(SupervisorError::Timeout)
+    }
+
+    #[cfg(not(unix))]
+    fn handle_timeout(
+        &mut self,
+        _samples: Vec<Sample>,
+    ) -> Result<IpcBenchmarkResult, SupervisorError> {
+        // No SIGTERM on non-Unix — just kill immediately
+        if self.is_alive() {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
         Err(SupervisorError::Timeout)
     }
 
@@ -476,9 +546,12 @@ impl WorkerHandle {
 impl Drop for WorkerHandle {
     fn drop(&mut self) {
         if self.is_alive() {
-            // Graceful: SIGTERM first, brief wait, then SIGKILL
-            let _ = send_sigterm(self.child.id());
-            std::thread::sleep(Duration::from_millis(50));
+            #[cfg(unix)]
+            {
+                // Graceful: SIGTERM first, brief wait, then SIGKILL
+                let _ = send_sigterm(self.child.id());
+                std::thread::sleep(Duration::from_millis(50));
+            }
             if self.is_alive() {
                 let _ = self.child.kill();
             }
@@ -486,6 +559,8 @@ impl Drop for WorkerHandle {
         }
     }
 }
+
+// ─── Supervisor ──────────────────────────────────────────────────────────────
 
 /// Supervisor that manages worker pool and distributes benchmarks
 pub struct Supervisor {
