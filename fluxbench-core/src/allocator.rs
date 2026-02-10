@@ -14,7 +14,8 @@ pub struct TrackingAllocator;
 
 unsafe impl GlobalAlloc for TrackingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let ptr = System.alloc(layout);
+        // SAFETY: Delegates to the system allocator with the provided layout.
+        let ptr = unsafe { System.alloc(layout) };
         if !ptr.is_null() {
             ALLOCATED_BYTES.fetch_add(layout.size() as u64, Ordering::Relaxed);
             ALLOCATION_COUNT.fetch_add(1, Ordering::Relaxed);
@@ -23,12 +24,14 @@ unsafe impl GlobalAlloc for TrackingAllocator {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        System.dealloc(ptr, layout);
+        // SAFETY: Pointer/layout are provided by corresponding allocation operations.
+        unsafe { System.dealloc(ptr, layout) };
         // Note: We don't decrement on dealloc to track total allocations
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        let ptr = System.alloc_zeroed(layout);
+        // SAFETY: Delegates to the system allocator with the provided layout.
+        let ptr = unsafe { System.alloc_zeroed(layout) };
         if !ptr.is_null() {
             ALLOCATED_BYTES.fetch_add(layout.size() as u64, Ordering::Relaxed);
             ALLOCATION_COUNT.fetch_add(1, Ordering::Relaxed);
@@ -37,7 +40,8 @@ unsafe impl GlobalAlloc for TrackingAllocator {
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        let new_ptr = System.realloc(ptr, layout, new_size);
+        // SAFETY: Pointer/layout originate from allocator contracts; new_size is caller-provided.
+        let new_ptr = unsafe { System.realloc(ptr, layout, new_size) };
         if !new_ptr.is_null() {
             // Track the size difference
             if new_size > layout.size() {
