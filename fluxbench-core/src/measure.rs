@@ -9,6 +9,8 @@ use std::time::Duration;
 #[derive(Debug, Clone, Copy)]
 pub struct Instant {
     #[cfg(target_arch = "x86_64")]
+    instant: std::time::Instant,
+    #[cfg(target_arch = "x86_64")]
     tsc: u64,
     #[cfg(not(target_arch = "x86_64"))]
     instant: std::time::Instant,
@@ -22,7 +24,10 @@ impl Instant {
         {
             // SAFETY: RDTSC is always safe on x86_64
             let tsc = unsafe { std::arch::x86_64::_rdtsc() };
-            Self { tsc }
+            Self {
+                instant: std::time::Instant::now(),
+                tsc,
+            }
         }
 
         #[cfg(not(target_arch = "x86_64"))]
@@ -38,10 +43,9 @@ impl Instant {
     pub fn elapsed(&self) -> Duration {
         #[cfg(target_arch = "x86_64")]
         {
-            let now = unsafe { std::arch::x86_64::_rdtsc() };
-            let cycles = now.saturating_sub(self.tsc);
-            // Approximate conversion (assumes ~3GHz, calibrated at startup)
-            Duration::from_nanos(cycles / 3)
+            // Use monotonic wall-clock elapsed time for nanoseconds.
+            // RDTSC is still captured separately for cycle metrics.
+            self.instant.elapsed()
         }
 
         #[cfg(not(target_arch = "x86_64"))]
