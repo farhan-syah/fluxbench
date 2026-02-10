@@ -6,8 +6,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme.workspace = true
 
 [dependencies]
+fluxbench-core.workspace = true
 fluxbench-stats.workspace = true
 evalexpr.workspace = true
 regex.workspace = true

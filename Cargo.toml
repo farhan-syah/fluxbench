@@ -13,23 +13,24 @@ members = [
 
 [workspace.package]
 version = "0.1.0"
-edition = "2021"
-rust-version = "1.75"
-license = "MIT OR Apache-2.0"
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
 repository = "https://github.com/ml-rust/fluxbench"
 keywords = ["benchmark", "performance", "testing", "statistics"]
 categories = ["development-tools::profiling", "development-tools::testing"]
+readme = "README.md"
 
 [workspace.dependencies]
 # Workspace crates
-fluxbench = { path = "fluxbench" }
-fluxbench-cli = { path = "fluxbench-cli" }
-fluxbench-core = { path = "fluxbench-core" }
-fluxbench-ipc = { path = "fluxbench-ipc" }
-fluxbench-logic = { path = "fluxbench-logic" }
-fluxbench-macros = { path = "fluxbench-macros" }
-fluxbench-report = { path = "fluxbench-report" }
-fluxbench-stats = { path = "fluxbench-stats" }
+fluxbench = { path = "fluxbench", version = "0.1.0" }
+fluxbench-cli = { path = "fluxbench-cli", version = "0.1.0" }
+fluxbench-core = { path = "fluxbench-core", version = "0.1.0" }
+fluxbench-ipc = { path = "fluxbench-ipc", version = "0.1.0" }
+fluxbench-logic = { path = "fluxbench-logic", version = "0.1.0" }
+fluxbench-macros = { path = "fluxbench-macros", version = "0.1.0" }
+fluxbench-report = { path = "fluxbench-report", version = "0.1.0" }
+fluxbench-stats = { path = "fluxbench-stats", version = "0.1.0" }
 
 # Serialization (Zero-Copy IPC)
 rkyv = { version = "0.7", features = ["validation", "strict"] }
@@ -83,9 +84,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Configuration
 toml = "0.8"
-
-# Plotting (our internal crate)
-# plotr = { path = "../plotr" }
 
 [profile.release]
 lto = "thin"
