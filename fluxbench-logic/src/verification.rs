@@ -8,16 +8,8 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
-/// Severity levels for CI integration
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Severity {
-    /// Critical - regression fails the build
-    Critical,
-    /// Warning - logged but doesn't fail
-    Warning,
-    /// Informational only
-    Info,
-}
+// Re-export the single canonical Severity from fluxbench-core
+pub use fluxbench_core::Severity;
 
 /// Verification definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,6 +126,7 @@ impl<'a> VerificationContext<'a> {
 /// Extract variable names from an evalexpr expression
 fn extract_variables(expression: &str) -> Vec<String> {
     static IDENT_RE: OnceLock<Regex> = OnceLock::new();
+    // Safety: this regex literal is guaranteed to compile
     let re = IDENT_RE.get_or_init(|| Regex::new(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b").unwrap());
 
     re.captures_iter(expression)
@@ -289,9 +282,11 @@ mod tests {
     fn test_verification_status_affects_exit() {
         assert!(VerificationStatus::Failed.affects_exit_code(Severity::Critical));
         assert!(!VerificationStatus::Failed.affects_exit_code(Severity::Warning));
-        assert!(!VerificationStatus::Skipped {
-            missing_metrics: "x".to_string()
-        }
-        .affects_exit_code(Severity::Critical));
+        assert!(
+            !VerificationStatus::Skipped {
+                missing_metrics: "x".to_string()
+            }
+            .affects_exit_code(Severity::Critical)
+        );
     }
 }

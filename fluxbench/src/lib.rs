@@ -52,15 +52,12 @@ pub use fluxbench_macros::{bench, compare, group, report, synthetic, verify};
 
 // Re-export logic types
 pub use fluxbench_logic::{
-    MetricContext, Verification, VerificationResult, VerificationStatus, VerifyDef,
-    SyntheticDef,
-    Severity as VerifySeverity,  // Severity for verify/synthetic macros
+    MetricContext, SyntheticDef, Verification, VerificationResult, VerificationStatus, VerifyDef,
 };
 
 // Re-export stats
 pub use fluxbench_stats::{
-    BootstrapConfig, BootstrapResult, SummaryStatistics,
-    compute_bootstrap, compute_summary,
+    BootstrapConfig, BootstrapResult, SummaryStatistics, compute_bootstrap, compute_summary,
 };
 
 /// Internal re-exports for macro use
@@ -73,8 +70,8 @@ pub mod internal {
 /// Prelude for convenient imports
 pub mod prelude {
     pub use crate::{
-        bench, compare, group, report, synthetic, verify,
-        Bencher, CompareDef, GroupDef, ReportDef, Severity,
+        Bencher, CompareDef, GroupDef, ReportDef, Severity, bench, compare, group, report,
+        synthetic, verify,
     };
 }
 

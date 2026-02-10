@@ -11,8 +11,8 @@ mod bencher;
 mod measure;
 mod worker;
 
-pub use allocator::{current_allocation, reset_allocation_counter, TrackingAllocator};
-pub use bencher::{run_benchmark_loop, Bencher, BenchmarkResult, IterationMode};
+pub use allocator::{TrackingAllocator, current_allocation, reset_allocation_counter};
+pub use bencher::{Bencher, BenchmarkResult, IterationMode, run_benchmark_loop};
 pub use measure::{Instant, Timer};
 pub use worker::WorkerMain;
 
@@ -44,7 +44,7 @@ pub struct BenchmarkDef {
 }
 
 /// Severity levels for CI integration
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Severity {
     /// Critical benchmark - regression fails the build
     Critical,

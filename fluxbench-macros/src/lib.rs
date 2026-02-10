@@ -13,7 +13,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, ItemFn, ItemStruct};
+use syn::{ItemFn, ItemStruct, parse_macro_input};
 
 // ============================================================================
 // Attribute Parsing Helpers
@@ -233,10 +233,7 @@ fn generate_async_runner(config: &BenchConfig, fn_name: &syn::Ident) -> TokenStr
             } else {
                 quote! {}
             };
-            (
-                quote! { new_multi_thread() },
-                quote! { #workers #time #io },
-            )
+            (quote! { new_multi_thread() }, quote! { #workers #time #io })
         }
     };
 
@@ -351,11 +348,7 @@ fn parse_duration(s: &str) -> Option<u64> {
     } else if let Some(ns) = s.strip_suffix("ns") {
         ns.trim().parse::<u64>().ok()
     } else if let Some(s_val) = s.strip_suffix('s') {
-        s_val
-            .trim()
-            .parse::<u64>()
-            .ok()
-            .map(|v| v * 1_000_000_000)
+        s_val.trim().parse::<u64>().ok().map(|v| v * 1_000_000_000)
     } else {
         None
     }
@@ -377,7 +370,7 @@ fn verify_impl(args: TokenStream2, input: ItemStruct) -> Result<TokenStream2, sy
     let struct_name_str = struct_name.to_string();
 
     let mut expr = String::new();
-    let mut severity = quote! { ::fluxbench::VerifySeverity::Critical };
+    let mut severity = quote! { ::fluxbench::Severity::Critical };
     let mut margin = 0.0f64;
 
     let parser = syn::meta::parser(|meta| {
@@ -386,9 +379,9 @@ fn verify_impl(args: TokenStream2, input: ItemStruct) -> Result<TokenStream2, sy
             "expr" => expr = attr::string(&meta)?,
             "severity" => {
                 severity = match attr::string(&meta)?.as_str() {
-                    "critical" => quote! { ::fluxbench::VerifySeverity::Critical },
-                    "warning" => quote! { ::fluxbench::VerifySeverity::Warning },
-                    _ => quote! { ::fluxbench::VerifySeverity::Info },
+                    "critical" => quote! { ::fluxbench::Severity::Critical },
+                    "warning" => quote! { ::fluxbench::Severity::Warning },
+                    _ => quote! { ::fluxbench::Severity::Info },
                 };
             }
             "margin" => margin = attr::float(&meta)?,
