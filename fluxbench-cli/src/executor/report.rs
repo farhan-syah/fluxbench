@@ -33,7 +33,9 @@ use super::metadata::build_report_meta;
 use fluxbench_report::{
     BenchmarkMetrics, BenchmarkReportResult, BenchmarkStatus, FailureInfo, Report, ReportSummary,
 };
-use fluxbench_stats::{compute_bootstrap, compute_cycles_stats, BootstrapConfig, SummaryStatistics};
+use fluxbench_stats::{
+    BootstrapConfig, SummaryStatistics, compute_bootstrap, compute_cycles_stats,
+};
 use rayon::prelude::*;
 
 /// Build a complete Report from execution results

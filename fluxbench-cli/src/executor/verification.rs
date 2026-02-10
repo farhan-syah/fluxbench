@@ -30,8 +30,8 @@
 use super::execution::BenchExecutionResult;
 use fluxbench_core::CompareDef;
 use fluxbench_logic::{
-    compute_synthetics, run_verifications, MetricContext, SyntheticDef, SyntheticResult,
-    Verification, VerificationContext, VerificationResult, VerifyDef,
+    MetricContext, SyntheticDef, SyntheticResult, Verification, VerificationContext,
+    VerificationResult, VerifyDef, compute_synthetics, run_verifications,
 };
 use fluxbench_report::{ComparisonEntry, ComparisonResult, ComparisonSeries};
 use fluxbench_stats::SummaryStatistics;
@@ -206,7 +206,8 @@ pub fn execute_verifications(
 
             // Build series_data[series_idx][x_idx]
             // When series labels are provided, match by position index
-            let mut series_data: Vec<Vec<f64>> = vec![vec![0.0; x_values.len()]; series_names.len()];
+            let mut series_data: Vec<Vec<f64>> =
+                vec![vec![0.0; x_values.len()]; series_names.len()];
 
             for (x_idx, (cmp, entries)) in sorted_comparisons.iter().enumerate() {
                 // Build a map from benchmark_id to value for this x point

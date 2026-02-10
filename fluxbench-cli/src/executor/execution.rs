@@ -31,7 +31,7 @@
 //! ```
 
 use crate::supervisor::{IpcBenchmarkResult, IpcBenchmarkStatus, Supervisor};
-use fluxbench_core::{run_benchmark_loop, Bencher, BenchmarkDef};
+use fluxbench_core::{Bencher, BenchmarkDef, run_benchmark_loop};
 use fluxbench_ipc::BenchmarkConfig;
 use fluxbench_report::BenchmarkStatus;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -59,12 +59,12 @@ pub struct ExecutionConfig {
 impl Default for ExecutionConfig {
     fn default() -> Self {
         Self {
-            warmup_time_ns: 3_000_000_000,       // 3 seconds
-            measurement_time_ns: 5_000_000_000,  // 5 seconds
+            warmup_time_ns: 3_000_000_000,      // 3 seconds
+            measurement_time_ns: 5_000_000_000, // 5 seconds
             min_iterations: Some(100),
             max_iterations: None,
             track_allocations: true,
-            bootstrap_iterations: 100_000,       // Matches Criterion default
+            bootstrap_iterations: 100_000, // Matches Criterion default
             confidence_level: 0.95,
         }
     }
@@ -107,7 +107,9 @@ impl Executor {
         let pb = ProgressBar::new(benchmarks.len() as u64);
         pb.set_style(
             ProgressStyle::default_bar()
-                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}")
+                .template(
+                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}",
+                )
                 .unwrap_or_else(|_| ProgressStyle::default_bar())
                 .progress_chars("#>-"),
         );
@@ -136,6 +138,7 @@ impl Executor {
                 |b| (bench.runner_fn)(b),
                 self.config.warmup_time_ns,
                 self.config.measurement_time_ns,
+                self.config.min_iterations,
                 self.config.max_iterations,
             )
         }));
@@ -152,11 +155,8 @@ impl Executor {
                     .collect();
 
                 // Extract CPU cycles (parallel array with samples)
-                let cpu_cycles: Vec<u32> = bench_result
-                    .samples
-                    .iter()
-                    .map(|s| s.cpu_cycles)
-                    .collect();
+                let cpu_cycles: Vec<u32> =
+                    bench_result.samples.iter().map(|s| s.cpu_cycles).collect();
 
                 // Sum allocations
                 let alloc_bytes: u64 = bench_result.samples.iter().map(|s| s.alloc_bytes).sum();
@@ -217,15 +217,22 @@ pub struct IsolatedExecutor {
     config: ExecutionConfig,
     timeout: Duration,
     reuse_workers: bool,
+    num_workers: usize,
 }
 
 impl IsolatedExecutor {
     /// Create a new isolated executor
-    pub fn new(config: ExecutionConfig, timeout: Duration, reuse_workers: bool) -> Self {
+    pub fn new(
+        config: ExecutionConfig,
+        timeout: Duration,
+        reuse_workers: bool,
+        num_workers: usize,
+    ) -> Self {
         Self {
             config,
             timeout,
             reuse_workers,
+            num_workers: num_workers.max(1),
         }
     }
 
@@ -234,7 +241,9 @@ impl IsolatedExecutor {
         let pb = ProgressBar::new(benchmarks.len() as u64);
         pb.set_style(
             ProgressStyle::default_bar()
-                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}")
+                .template(
+                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}",
+                )
                 .unwrap_or_else(|_| ProgressStyle::default_bar())
                 .progress_chars("#>-"),
         );
@@ -251,7 +260,7 @@ impl IsolatedExecutor {
             timeout_ns: self.timeout.as_nanos() as u64,
         };
 
-        let supervisor = Supervisor::new(ipc_config, self.timeout, 1);
+        let supervisor = Supervisor::new(ipc_config, self.timeout, self.num_workers);
 
         // Run benchmarks via IPC
         let ipc_results = if self.reuse_workers {

@@ -125,11 +125,7 @@ pub fn format_human_output(report: &Report) -> String {
         });
 
         for entry in sorted_entries {
-            let baseline_marker = if entry.is_baseline {
-                " (baseline)"
-            } else {
-                ""
-            };
+            let baseline_marker = if entry.is_baseline { " (baseline)" } else { "" };
             let speedup_str = if entry.is_baseline {
                 "1.00x".to_string()
             } else {
@@ -229,7 +225,12 @@ pub fn format_human_output(report: &Report) -> String {
     let active_verifications: Vec<_> = report
         .verifications
         .iter()
-        .filter(|v| !matches!(v.status, fluxbench_logic::VerificationStatus::Skipped { .. }))
+        .filter(|v| {
+            !matches!(
+                v.status,
+                fluxbench_logic::VerificationStatus::Skipped { .. }
+            )
+        })
         .collect();
 
     if !active_verifications.is_empty() {

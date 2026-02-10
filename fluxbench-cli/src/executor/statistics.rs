@@ -10,7 +10,7 @@
 //! - Outlier detection via IQR method
 
 use super::execution::{BenchExecutionResult, ExecutionConfig};
-use fluxbench_stats::{compute_summary, OutlierMethod, SummaryStatistics};
+use fluxbench_stats::{OutlierMethod, SummaryStatistics, compute_summary};
 use rayon::prelude::*;
 
 /// Compute statistics for benchmark results (parallelized with Rayon)
