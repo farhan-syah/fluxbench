@@ -1,8 +1,8 @@
 //! Report Data Structures
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 use fluxbench_stats::SummaryStatistics;
+use serde::{Deserialize, Serialize};
 
 /// Complete benchmark report
 #[derive(Debug, Clone, Serialize, Deserialize)]

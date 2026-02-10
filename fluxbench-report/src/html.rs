@@ -54,8 +54,16 @@ pub fn generate_html_report(report: &Report) -> String {
     html.push_str("        <tbody>\n");
 
     for result in &report.results {
-        let mean = result.metrics.as_ref().map(|m| format!("{:.2} ns", m.mean_ns)).unwrap_or_else(|| "-".to_string());
-        let p99 = result.metrics.as_ref().map(|m| format!("{:.2} ns", m.p99_ns)).unwrap_or_else(|| "-".to_string());
+        let mean = result
+            .metrics
+            .as_ref()
+            .map(|m| format!("{:.2} ns", m.mean_ns))
+            .unwrap_or_else(|| "-".to_string());
+        let p99 = result
+            .metrics
+            .as_ref()
+            .map(|m| format!("{:.2} ns", m.p99_ns))
+            .unwrap_or_else(|| "-".to_string());
         html.push_str(&format!(
             "          <tr><td>{}</td><td>{}</td><td>{}</td><td>{:?}</td></tr>\n",
             result.id, mean, p99, result.status

@@ -15,7 +15,7 @@ mod report;
 pub use csv::generate_csv_report;
 pub use github::generate_github_summary;
 pub use html::generate_html_report;
-pub use json::{generate_json_report, ReportSchema};
+pub use json::{ReportSchema, generate_json_report};
 pub use report::{
     BenchmarkMetrics, BenchmarkReportResult, BenchmarkStatus, Comparison, ComparisonEntry,
     ComparisonResult, ComparisonSeries, FailureInfo, Report, ReportMeta, ReportSummary, SystemInfo,
@@ -50,4 +50,3 @@ impl std::str::FromStr for OutputFormat {
         }
     }
 }
-
