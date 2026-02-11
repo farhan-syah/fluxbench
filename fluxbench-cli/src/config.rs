@@ -26,21 +26,44 @@ pub struct FluxConfig {
     pub ci: CiConfig,
 }
 
+/// Isolation mode for benchmark execution
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum IsolationMode {
+    /// Run each benchmark in a separate worker process (default)
+    #[default]
+    Process,
+    /// Run benchmarks in-process (no isolation, useful for debugging)
+    InProcess,
+    /// Run benchmarks in threads (no isolation)
+    Thread,
+}
+
+impl IsolationMode {
+    /// Whether this mode provides process isolation
+    pub fn is_isolated(self) -> bool {
+        matches!(self, IsolationMode::Process)
+    }
+}
+
 /// Runner configuration for benchmark execution
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunnerConfig {
     /// Timeout for a single benchmark (e.g., "60s", "5m")
     #[serde(default = "default_timeout")]
     pub timeout: String,
-    /// Isolation mode: "process" or "thread"
-    #[serde(default = "default_isolation")]
-    pub isolation: String,
+    /// Isolation mode: "process", "in-process", or "thread"
+    #[serde(default)]
+    pub isolation: IsolationMode,
     /// Warmup duration before measurement (e.g., "3s")
     #[serde(default = "default_warmup")]
     pub warmup_time: String,
     /// Measurement duration (e.g., "5s")
     #[serde(default = "default_measurement")]
     pub measurement_time: String,
+    /// Fixed sample count: skip warmup, run exactly N iterations (each = one sample)
+    #[serde(default)]
+    pub samples: Option<u64>,
     /// Minimum number of iterations
     #[serde(default)]
     pub min_iterations: Option<u64>,
@@ -59,9 +82,10 @@ impl Default for RunnerConfig {
     fn default() -> Self {
         Self {
             timeout: default_timeout(),
-            isolation: default_isolation(),
+            isolation: IsolationMode::default(),
             warmup_time: default_warmup(),
             measurement_time: default_measurement(),
+            samples: None,
             min_iterations: None,
             max_iterations: None,
             bootstrap_iterations: default_bootstrap_iterations(),
@@ -72,9 +96,6 @@ impl Default for RunnerConfig {
 
 fn default_timeout() -> String {
     "60s".to_string()
-}
-fn default_isolation() -> String {
-    "process".to_string()
 }
 fn default_warmup() -> String {
     "3s".to_string()
@@ -253,7 +274,9 @@ measurement_time = "5s"
 # Timeout for a single benchmark
 timeout = "60s"
 # Isolation mode: "process" or "thread"
-isolation = "process"
+isolation = "process"  # "process", "in-process", or "thread"
+# Fixed sample count: skip warmup, run exactly N iterations (uncomment to enable)
+# samples = 5
 # Minimum iterations (uncomment to enable)
 # min_iterations = 100
 # Maximum iterations (uncomment to enable)
