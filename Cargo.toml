@@ -33,7 +33,7 @@ fluxbench-report = { path = "fluxbench-report", version = "0.1.0" }
 fluxbench-stats = { path = "fluxbench-stats", version = "0.1.0" }
 
 # Serialization (Zero-Copy IPC)
-rkyv = { version = "0.7", features = ["validation", "strict"] }
+rkyv = "0.8"
 
 # CLI
 clap = { version = "4", features = ["derive", "env"] }

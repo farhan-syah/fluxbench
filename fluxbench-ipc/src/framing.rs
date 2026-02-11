@@ -2,9 +2,10 @@
 //!
 //! Provides reliable message boundaries over stream-based IPC (stdin/stdout).
 
-use rkyv::ser::serializers::AllocSerializer;
-use rkyv::validation::validators::DefaultValidator;
-use rkyv::{Archive, CheckBytes, Deserialize, Infallible, Serialize};
+use rkyv::api::high::{HighDeserializer, HighSerializer, HighValidator};
+use rkyv::ser::allocator::ArenaHandle;
+use rkyv::util::AlignedVec;
+use rkyv::{Archive, Deserialize, Serialize, rancor};
 use std::io::{BufReader, BufWriter, Read, Write};
 use thiserror::Error;
 
@@ -44,11 +45,11 @@ pub enum FrameError {
 pub fn write_frame<W, T>(writer: &mut BufWriter<W>, message: &T) -> Result<(), FrameError>
 where
     W: Write,
-    T: Serialize<AllocSerializer<256>>,
+    T: for<'a> Serialize<HighSerializer<AlignedVec, ArenaHandle<'a>, rancor::Error>>,
 {
     // Serialize the message
-    let bytes =
-        rkyv::to_bytes::<_, 256>(message).map_err(|e| FrameError::Serialization(e.to_string()))?;
+    let bytes = rkyv::to_bytes::<rancor::Error>(message)
+        .map_err(|e| FrameError::Serialization(e.to_string()))?;
 
     let len = bytes.len();
     if len > MAX_FRAME_SIZE {
@@ -75,7 +76,8 @@ pub fn read_frame<R, T>(reader: &mut BufReader<R>) -> Result<T, FrameError>
 where
     R: Read,
     T: Archive,
-    T::Archived: for<'a> CheckBytes<DefaultValidator<'a>> + Deserialize<T, Infallible>,
+    T::Archived: for<'a> rkyv::bytecheck::CheckBytes<HighValidator<'a, rancor::Error>>
+        + Deserialize<T, HighDeserializer<rancor::Error>>,
 {
     // Read length prefix
     let mut len_buf = [0u8; 4];
@@ -102,18 +104,13 @@ where
     }
 
     // Read payload into aligned buffer
-    let mut buf = rkyv::AlignedVec::with_capacity(len);
+    let mut buf = AlignedVec::<16>::with_capacity(len);
     buf.resize(len, 0);
     reader.read_exact(&mut buf)?;
 
-    // Validate and access archived data
-    let archived = rkyv::check_archived_root::<T>(&buf)
+    // Validate and deserialize
+    let value: T = rkyv::from_bytes::<T, rancor::Error>(&buf)
         .map_err(|e| FrameError::Deserialization(e.to_string()))?;
-
-    // Deserialize
-    let value: T = archived
-        .deserialize(&mut Infallible)
-        .expect("infallible deserialization");
 
     Ok(value)
 }
@@ -134,7 +131,7 @@ impl<W: Write> FrameWriter<W> {
     /// Write a message
     pub fn write<T>(&mut self, message: &T) -> Result<(), FrameError>
     where
-        T: Serialize<AllocSerializer<256>>,
+        T: for<'a> Serialize<HighSerializer<AlignedVec, ArenaHandle<'a>, rancor::Error>>,
     {
         write_frame(&mut self.writer, message)
     }
@@ -173,7 +170,8 @@ impl<R: Read> FrameReader<R> {
     pub fn read<T>(&mut self) -> Result<T, FrameError>
     where
         T: Archive,
-        T::Archived: for<'a> CheckBytes<DefaultValidator<'a>> + Deserialize<T, Infallible>,
+        T::Archived: for<'a> rkyv::bytecheck::CheckBytes<HighValidator<'a, rancor::Error>>
+            + Deserialize<T, HighDeserializer<rancor::Error>>,
     {
         read_frame(&mut self.reader)
     }
@@ -201,7 +199,6 @@ mod tests {
     use std::io::Cursor;
 
     #[derive(Debug, Clone, PartialEq, Archive, RkyvSerialize, RkyvDeserialize)]
-    #[archive(check_bytes)]
     struct TestMessage {
         value: u64,
         text: String,

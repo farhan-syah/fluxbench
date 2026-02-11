@@ -13,7 +13,6 @@ use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 /// - Protocol v1: 24 bytes (`cpu_cycles` was `u32`).
 /// - Protocol v2+: 32 bytes (`cpu_cycles` widened to `u64` to avoid overflow beyond ~1 s at 4 GHz).
 #[derive(Debug, Clone, Copy, Archive, RkyvSerialize, RkyvDeserialize)]
-#[archive(check_bytes)]
 #[repr(C, align(8))]
 pub struct Sample {
     /// Duration of this iteration in nanoseconds
@@ -52,7 +51,6 @@ impl Sample {
 
 /// Reason for flushing a sample batch
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Archive, RkyvSerialize, RkyvDeserialize)]
-#[archive(check_bytes)]
 pub enum FlushReason {
     /// Batch size limit reached (10K samples)
     BatchFull,
@@ -68,7 +66,6 @@ pub enum FlushReason {
 
 /// A batch of samples sent from worker to supervisor
 #[derive(Debug, Clone, Archive, RkyvSerialize, RkyvDeserialize)]
-#[archive(check_bytes)]
 pub struct SampleBatch {
     /// Hash of the benchmark ID (for fast lookup without string comparison)
     pub bench_id_hash: u64,
@@ -95,7 +92,6 @@ impl SampleBatch {
 
 /// Worker capabilities advertised during handshake
 #[derive(Debug, Clone, Archive, RkyvSerialize, RkyvDeserialize)]
-#[archive(check_bytes)]
 pub struct WorkerCapabilities {
     /// Protocol version for compatibility
     pub protocol_version: u32,
@@ -126,7 +122,6 @@ impl Default for WorkerCapabilities {
 
 /// Messages sent from Worker to Supervisor
 #[derive(Debug, Clone, Archive, RkyvSerialize, RkyvDeserialize)]
-#[archive(check_bytes)]
 pub enum WorkerMessage {
     /// Initial handshake with worker capabilities
     Hello(WorkerCapabilities),
@@ -171,7 +166,6 @@ pub enum WorkerMessage {
 
 /// Categories of benchmark failures
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Archive, RkyvSerialize, RkyvDeserialize)]
-#[archive(check_bytes)]
 pub enum FailureKind {
     /// Rust panic (caught)
     Panic,
@@ -189,7 +183,6 @@ pub enum FailureKind {
 
 /// Commands sent from Supervisor to Worker
 #[derive(Debug, Clone, Archive, RkyvSerialize, RkyvDeserialize)]
-#[archive(check_bytes)]
 pub enum SupervisorCommand {
     /// Run a specific benchmark
     Run {
@@ -211,7 +204,6 @@ pub enum SupervisorCommand {
 
 /// Configuration for a benchmark run
 #[derive(Debug, Clone, Archive, RkyvSerialize, RkyvDeserialize)]
-#[archive(check_bytes)]
 pub struct BenchmarkConfig {
     /// Warmup time in nanoseconds
     pub warmup_time_ns: u64,
