@@ -2,10 +2,11 @@
 //!
 //! Manages worker processes and aggregates results via IPC.
 //!
-//! On Unix, uses dedicated file descriptors (fd 3/4) for IPC, leaving
-//! stdout/stderr free for user benchmark code. On non-Unix platforms,
-//! falls back to stdin/stdout pipes (user `println!` may corrupt the
-//! protocol stream in this mode).
+//! On Unix, creates dynamically-allocated pipe pairs and passes their fd
+//! numbers to the worker via the `FLUX_IPC_FD` environment variable,
+//! leaving stdout/stderr free for user benchmark code. On non-Unix
+//! platforms, falls back to stdin/stdout pipes (user `println!` may
+//! corrupt the protocol stream in this mode).
 //!
 //! **Timeout behavior:** On Unix, sends SIGTERM for graceful shutdown then
 //! drains pending samples (500ms window) before SIGKILL. On non-Unix,
@@ -173,13 +174,13 @@ impl WorkerHandle {
         Self::spawn_impl(binary.as_ref(), timeout)
     }
 
-    // ── Unix spawn: fd 3/4, stdout free for user code ────────────────────
+    // ── Unix spawn: dedicated pipe fds, stdout free for user code ────────
 
     #[cfg(unix)]
     fn spawn_impl(binary: &std::path::Path, timeout: Duration) -> Result<Self, SupervisorError> {
-        // cmd_pipe: supervisor writes commands → worker reads from fd 3
+        // cmd_pipe: supervisor writes commands → worker reads from cmd_read
         let (cmd_read, cmd_write) = create_pipe()?;
-        // msg_pipe: worker writes messages from fd 4 → supervisor reads
+        // msg_pipe: worker writes messages from msg_write → supervisor reads from msg_read
         let (msg_read, msg_write) = match create_pipe() {
             Ok(fds) => fds,
             Err(e) => {
@@ -189,30 +190,36 @@ impl WorkerHandle {
             }
         };
 
+        // Pass the actual pipe fd numbers to the worker — no dup2 to hardcoded
+        // fds 3/4 which may already be in use by library static initializers.
         let mut command = Command::new(binary);
         command
             .arg("--flux-worker")
-            .env("FLUX_IPC_FD", "3,4")
+            .env("FLUX_IPC_FD", format!("{},{}", cmd_read, msg_write))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::inherit());
 
-        // In the child: dup cmd_read→3, msg_write→4, close originals.
+        // In the child: clear CLOEXEC on the child-side fds so they survive exec,
+        // and close the parent-side fds.
         unsafe {
             command.pre_exec(move || {
-                if cmd_read != 3 {
-                    libc::dup2(cmd_read, 3);
-                    libc::close(cmd_read);
+                // Keep child-side fds open across exec
+                let flags = libc::fcntl(cmd_read, libc::F_GETFD);
+                if flags == -1 {
+                    return Err(std::io::Error::last_os_error());
                 }
-                let flags = libc::fcntl(3, libc::F_GETFD);
-                libc::fcntl(3, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
+                if libc::fcntl(cmd_read, libc::F_SETFD, flags & !libc::FD_CLOEXEC) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
 
-                if msg_write != 4 {
-                    libc::dup2(msg_write, 4);
-                    libc::close(msg_write);
+                let flags = libc::fcntl(msg_write, libc::F_GETFD);
+                if flags == -1 {
+                    return Err(std::io::Error::last_os_error());
                 }
-                let flags = libc::fcntl(4, libc::F_GETFD);
-                libc::fcntl(4, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
+                if libc::fcntl(msg_write, libc::F_SETFD, flags & !libc::FD_CLOEXEC) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
 
                 // Close parent-side ends that leaked into the child
                 libc::close(cmd_write);
@@ -237,9 +244,18 @@ impl WorkerHandle {
         close_fd(cmd_read);
         close_fd(msg_write);
 
-        let poll_fd = msg_read;
+        // SAFETY: msg_read and cmd_write are valid fds whose child-side
+        // counterparts have been closed above. from_raw_fd takes ownership
+        // and will close them on drop.
         let reader_file = unsafe { std::fs::File::from_raw_fd(msg_read) };
         let writer_file = unsafe { std::fs::File::from_raw_fd(cmd_write) };
+
+        // Duplicate the fd for poll(2) so we have an independent handle that
+        // doesn't alias the File-owned fd. Closed in WorkerHandle::drop().
+        let poll_fd = unsafe { libc::dup(msg_read) };
+        if poll_fd < 0 {
+            return Err(SupervisorError::SpawnFailed(std::io::Error::last_os_error()));
+        }
 
         let mut handle = Self {
             child,
@@ -556,6 +572,12 @@ impl Drop for WorkerHandle {
                 let _ = self.child.kill();
             }
             let _ = self.child.wait();
+        }
+
+        // Close the duplicated poll fd (Unix only; -1 on non-Unix is a no-op)
+        #[cfg(unix)]
+        if self.poll_fd >= 0 {
+            close_fd(self.poll_fd);
         }
     }
 }
