@@ -476,7 +476,35 @@ With `--isolated=true` (default), the panic occurs in a worker process and is re
 
 ### Allocation Tracking
 
-Allocations are tracked automatically per-iteration. You can also query them manually:
+FluxBench can track heap allocations per benchmark iteration. To enable this, install the
+`TrackingAllocator` as the global allocator in your benchmark binary:
+
+```rust
+use fluxbench::prelude::*;
+use fluxbench::TrackingAllocator;
+
+#[global_allocator]
+static GLOBAL: TrackingAllocator = TrackingAllocator;
+
+#[bench]
+fn vec_allocation(b: &mut Bencher) {
+    b.iter(|| vec![1, 2, 3, 4, 5]);
+}
+
+fn main() { fluxbench::run(); }
+```
+
+Results will include allocation metrics for each benchmark:
+- **alloc_bytes** — total bytes allocated per iteration
+- **alloc_count** — number of allocations per iteration
+
+These appear in JSON, CSV, and human output automatically.
+
+> **Note:** `#[global_allocator]` must be declared in the binary crate (your `benches/*.rs` file),
+> not in a library. Rust allows only one global allocator per binary. Without it, `track = true`
+> in `flux.toml` will report zero allocations.
+
+You can also query allocation counters manually:
 
 ```rust
 fluxbench::reset_allocation_counter();
@@ -484,8 +512,6 @@ fluxbench::reset_allocation_counter();
 let (alloc_bytes, alloc_count) = fluxbench::current_allocation();
 println!("Bytes: {}, Count: {}", alloc_bytes, alloc_count);
 ```
-
-Allocation data (bytes and count) appears in JSON, CSV, and human output for each benchmark.
 
 ### In-Process Mode
 
