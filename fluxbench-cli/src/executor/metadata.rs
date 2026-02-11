@@ -14,11 +14,12 @@
 //! Linux-specific data (CPU model, memory) gracefully degrades on other
 //! platforms, returning "Unknown" or 0 values.
 
+use super::execution::ExecutionConfig;
 use chrono::Utc;
-use fluxbench_report::{ReportMeta, SystemInfo};
+use fluxbench_report::{ReportConfig, ReportMeta, SystemInfo};
 
 /// Build report metadata including system info and git details
-pub fn build_report_meta() -> ReportMeta {
+pub fn build_report_meta(exec_config: &ExecutionConfig) -> ReportMeta {
     // Get git info if available
     let git_commit = std::process::Command::new("git")
         .args(["rev-parse", "HEAD"])
@@ -49,6 +50,15 @@ pub fn build_report_meta() -> ReportMeta {
         git_commit,
         git_branch,
         system,
+        config: ReportConfig {
+            warmup_time_ns: exec_config.warmup_time_ns,
+            measurement_time_ns: exec_config.measurement_time_ns,
+            min_iterations: exec_config.min_iterations,
+            max_iterations: exec_config.max_iterations,
+            bootstrap_iterations: exec_config.bootstrap_iterations,
+            confidence_level: exec_config.confidence_level,
+            track_allocations: exec_config.track_allocations,
+        },
     }
 }
 

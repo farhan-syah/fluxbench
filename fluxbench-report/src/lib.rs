@@ -18,7 +18,8 @@ pub use html::generate_html_report;
 pub use json::{ReportSchema, generate_json_report};
 pub use report::{
     BenchmarkMetrics, BenchmarkReportResult, BenchmarkStatus, Comparison, ComparisonEntry,
-    ComparisonResult, ComparisonSeries, FailureInfo, Report, ReportMeta, ReportSummary, SystemInfo,
+    ComparisonResult, ComparisonSeries, FailureInfo, Report, ReportConfig, ReportMeta,
+    ReportSummary, SystemInfo,
 };
 
 /// Output format selection
