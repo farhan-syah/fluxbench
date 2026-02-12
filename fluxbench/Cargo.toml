@@ -1,6 +1,6 @@
 [package]
 name = "fluxbench"
-description = "Benchmarking framework with crash isolation, bootstrap statistics, and CI integration"
+description = "Benchmarking framework with process isolation, bootstrap statistics, algebraic verification, and CI integration"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -21,10 +21,3 @@ fluxbench-ipc.workspace = true
 # Re-export for macros
 inventory.workspace = true
 tokio.workspace = true
-
-[dev-dependencies]
-rand.workspace = true
-
-[[example]]
-name = "benchmarks"
-path = "examples/benchmarks.rs"

@@ -1,6 +1,6 @@
 [package]
 name = "fluxbench-cli"
-description = "FluxBench CLI - Benchmark supervisor and harness"
+description = "FluxBench CLI: Supervisor process, benchmark filtering, output generation, and worker orchestration"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

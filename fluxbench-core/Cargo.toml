@@ -1,6 +1,6 @@
 [package]
 name = "fluxbench-core"
-description = "Worker runtime for FluxBench - the Bencher struct, timing, and allocation tracking"
+description = "Worker runtime for FluxBench: Bencher struct, high-precision timing (RDTSC), and memory allocation tracking"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

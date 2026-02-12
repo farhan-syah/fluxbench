@@ -1,6 +1,6 @@
 [package]
 name = "fluxbench-macros"
-description = "Procedural macros for FluxBench benchmark registration"
+description = "Procedural macros for FluxBench: benchmark registration, verification rules, synthetic metrics, and report layout"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

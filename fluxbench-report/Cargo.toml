@@ -1,6 +1,6 @@
 [package]
 name = "fluxbench-report"
-description = "Reporting and visualization for FluxBench"
+description = "Report generation and visualization for FluxBench: JSON, CSV, HTML, and GitHub Actions output"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -19,5 +19,3 @@ serde_json.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
 
-# Visualization (our internal crate, commented until available)
-# plotr = { path = "../../plotr" }
