@@ -67,6 +67,7 @@ pub struct BootstrapResult {
 
 /// Errors that can occur during bootstrap
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum BootstrapError {
     #[error("Not enough samples: got {got}, need at least {min}")]
     NotEnoughSamples { got: usize, min: usize },

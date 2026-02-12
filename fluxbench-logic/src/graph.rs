@@ -7,6 +7,7 @@ use thiserror::Error;
 
 /// Errors from graph operations
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum GraphError {
     #[error("Cycle detected: {0}")]
     CycleDetected(String),

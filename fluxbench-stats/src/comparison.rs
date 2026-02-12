@@ -201,6 +201,7 @@ fn interpret_effect_size(d: f64) -> EffectInterpretation {
 
 /// Errors from comparison operations
 #[derive(Debug, Clone, thiserror::Error)]
+#[non_exhaustive]
 pub enum ComparisonError {
     #[error("Baseline samples are empty")]
     EmptyBaseline,

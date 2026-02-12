@@ -10,6 +10,7 @@ use thiserror::Error;
 
 /// Errors from metric evaluation
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ContextError {
     #[error("Unknown metric: {0}")]
     UnknownMetric(String),
@@ -47,13 +48,18 @@ impl MetricContext {
         let mut ctx = HashMapContext::new();
 
         // Add all metrics to evalexpr context
+        // Sanitize `@` to `__` since evalexpr only supports identifier chars
         for (name, value) in &self.metrics {
-            ctx.set_value(name.clone(), Value::Float(*value))
+            let safe_name = name.replace('@', "__");
+            ctx.set_value(safe_name, Value::Float(*value))
                 .map_err(|e: EvalexprError| ContextError::EvalError(e.to_string()))?;
         }
 
+        // Sanitize expression: replace `@` in identifiers with `__`
+        let expression = expression.replace('@', "__");
+
         // Evaluate
-        let result = eval_with_context(expression, &ctx)
+        let result = eval_with_context(&expression, &ctx)
             .map_err(|e| ContextError::EvalError(e.to_string()))?;
 
         // Convert to f64

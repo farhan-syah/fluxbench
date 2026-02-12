@@ -14,6 +14,7 @@ pub const MAX_FRAME_SIZE: usize = 16 * 1024 * 1024;
 
 /// Errors that can occur during frame encoding/decoding
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum FrameError {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),

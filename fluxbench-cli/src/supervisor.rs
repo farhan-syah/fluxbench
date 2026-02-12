@@ -30,6 +30,7 @@ use std::os::unix::io::{FromRawFd, RawFd};
 use std::os::unix::process::CommandExt;
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum SupervisorError {
     #[error("Failed to spawn worker: {0}")]
     SpawnFailed(#[from] std::io::Error),
