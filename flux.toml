@@ -1,0 +1,66 @@
+# FluxBench Configuration
+# https://github.com/ml-rust/fluxbench
+#
+# This file is OPTIONAL. FluxBench works without it — all settings have sensible
+# defaults. However, flux.toml is the recommended way to set workspace-wide
+# defaults. Settings here can be overridden per-benchmark via macro attributes
+# (e.g. `#[bench(warmup = "5s")]`) or via CLI flags (e.g. `--warmup 5s`).
+#
+# Priority: macro attribute > CLI flag > flux.toml > built-in default
+#
+# Place this file in your project root. FluxBench auto-discovers it by
+# walking up from the current directory.
+
+[runner]
+# Warmup duration before measurement (default: "3s")
+warmup_time = "500ms"
+# Measurement duration (default: "5s")
+measurement_time = "1s"
+# Timeout for a single benchmark (default: "60s")
+timeout = "30s"
+# Isolation mode: "process", "in-process", or "thread" (default: "process")
+isolation = "process"
+# Bootstrap iterations for confidence intervals (default: 10000)
+bootstrap_iterations = 1000
+# Confidence level, 0.0 to 1.0 (default: 0.95)
+confidence_level = 0.95
+# Fixed sample count: skip warmup, run exactly N iterations (default: unset)
+# samples = 5
+# Minimum iterations per sample (default: unset — auto-tuned)
+# min_iterations = 100
+# Maximum iterations per sample (default: unset — auto-tuned)
+# max_iterations = 1000000
+# Parallel isolated workers (default: unset — sequential)
+# jobs = 4
+
+[allocator]
+# Track memory allocations during benchmarks (default: true)
+track = true
+# Fail if any allocation occurs during measurement (default: false)
+fail_on_allocation = false
+# Maximum bytes per iteration, unset = unlimited (default: unset)
+# max_bytes_per_iter = 1024
+
+[output]
+# Output format: "human", "json", "github", "html", "csv" (default: "human")
+format = "human"
+# Output directory for reports and baselines (default: "target/fluxbench")
+directory = "target/fluxbench"
+# Automatically save a JSON baseline after each run (default: false)
+save_baseline = false
+# Compare against a saved baseline (default: unset)
+# baseline_path = "target/fluxbench/baseline.json"
+
+# [visuals]
+# Not yet implemented — reserved for future chart/report rendering.
+# theme = "light"       # (default: "light")
+# width = 1280          # (default: 1280)
+# height = 720          # (default: 720)
+
+[ci]
+# Regression threshold percentage — fail CI if exceeded (default: 5.0)
+regression_threshold = 5.0
+# Emit GitHub Actions annotations (::warning, ::error) (default: false)
+github_annotations = false
+# Exit non-zero on critical verification failures (default: true)
+fail_on_critical = true
