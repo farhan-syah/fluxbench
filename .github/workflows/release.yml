@@ -75,21 +75,24 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Set version from tag (if needed)
+      # Update [workspace.package] version and all fluxbench-* dependency
+      # versions in [workspace.dependencies] to match the tag.
+      - name: Set version from tag
         run: |
           VERSION="${{ needs.validate-version.outputs.version }}"
           CURRENT=$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[] | select(.name == "fluxbench") | .version')
           if [[ "$VERSION" != "$CURRENT" ]]; then
+            # Update workspace.package version (first occurrence)
             sed -i "0,/^version = \".*\"/s//version = \"$VERSION\"/" Cargo.toml
-            echo "Updated Cargo.toml: $CURRENT -> $VERSION"
+            # Update all fluxbench-* dependency versions
+            sed -i "s/\(fluxbench[a-z-]* = { path = \"[^\"]*\", version = \"\)[^\"]*\"/\1=$VERSION\"/" Cargo.toml
+            echo "Updated all versions: $CURRENT -> $VERSION"
           else
             echo "Version already matches, no change needed"
           fi
 
-      - name: Dry run
-        run: cargo publish -p fluxbench --dry-run --allow-dirty
-
+      # Publishes all workspace crates in dependency order automatically.
       - name: Publish to crates.io
-        run: cargo publish -p fluxbench --allow-dirty
+        run: cargo publish --workspace --allow-dirty
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
