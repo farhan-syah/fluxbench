@@ -36,8 +36,8 @@ use clap::{Parser, Subcommand};
 use fluxbench_core::{BenchmarkDef, WorkerMain};
 use fluxbench_logic::aggregate_verifications;
 use fluxbench_report::{
-    OutputFormat, generate_csv_report, generate_github_summary, generate_html_report,
-    generate_json_report,
+    OutputFormat, format_duration, generate_csv_report, generate_github_summary,
+    generate_html_report, generate_json_report,
 };
 use rayon::ThreadPoolBuilder;
 use regex::Regex;
@@ -67,8 +67,9 @@ pub struct Cli {
     pub output: Option<PathBuf>,
 
     /// Load baseline for comparison
+    /// Optionally specify a path; defaults to config or target/fluxbench/baseline.json
     #[arg(long)]
-    pub baseline: Option<PathBuf>,
+    pub baseline: Option<Option<PathBuf>>,
 
     /// Dry run - list benchmarks without executing
     #[arg(long)]
@@ -493,6 +494,11 @@ fn run_benchmarks(
     report.summary.critical_failures = verification_summary.critical_failures;
     report.summary.warnings = verification_summary.failed - verification_summary.critical_failures;
 
+    // Emit GitHub Actions annotations if enabled
+    if config.ci.github_annotations {
+        emit_github_annotations(&report);
+    }
+
     // Generate output
     let output = match format {
         OutputFormat::Json => generate_json_report(&report)?,
@@ -542,8 +548,8 @@ fn compare_benchmarks(
     git_ref: &str,
     format: OutputFormat,
 ) -> anyhow::Result<()> {
-    // Load baseline
-    let baseline_path = cli.baseline.as_ref().ok_or_else(|| {
+    // Load baseline — resolve path from CLI, config, or default
+    let baseline_path = resolve_baseline_path(&cli.baseline, config).ok_or_else(|| {
         anyhow::anyhow!(
             "--baseline required for comparison, or use 'compare' command with a git ref"
         )
@@ -556,7 +562,7 @@ fn compare_benchmarks(
         ));
     }
 
-    let baseline_json = std::fs::read_to_string(baseline_path)?;
+    let baseline_json = std::fs::read_to_string(&baseline_path)?;
     let baseline: fluxbench_report::Report = serde_json::from_str(&baseline_json)?;
     let resolved_git_ref = resolve_git_ref(git_ref)?;
 
@@ -675,6 +681,11 @@ fn compare_benchmarks(
     report.summary.critical_failures = verification_summary.critical_failures;
     report.summary.warnings = verification_summary.failed - verification_summary.critical_failures;
 
+    // Emit GitHub Actions annotations if enabled
+    if config.ci.github_annotations {
+        emit_github_annotations(&report);
+    }
+
     // Generate output
     let output = match format {
         OutputFormat::Json => generate_json_report(&report)?,
@@ -747,6 +758,102 @@ fn save_baseline_if_needed(
     Ok(())
 }
 
+/// Resolve baseline path from CLI flag, config, or default.
+///
+/// - `Some(Some(path))` — explicit path from `--baseline /path/to/file`
+/// - `Some(None)` — `--baseline` with no value, use config or default
+/// - `None` — flag not passed at all
+fn resolve_baseline_path(
+    cli_baseline: &Option<Option<PathBuf>>,
+    config: &FluxConfig,
+) -> Option<PathBuf> {
+    match cli_baseline {
+        Some(Some(path)) => Some(path.clone()),
+        Some(None) => {
+            // --baseline passed without path: use config or default
+            Some(
+                config
+                    .output
+                    .baseline_path
+                    .as_ref()
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from("target/fluxbench/baseline.json")),
+            )
+        }
+        None => None,
+    }
+}
+
+/// Emit `::error::` and `::warning::` annotations for GitHub Actions.
+///
+/// These appear inline on PR diffs when running in GitHub Actions CI.
+fn emit_github_annotations(report: &fluxbench_report::Report) {
+    // Annotate crashed/failed benchmarks
+    for result in &report.results {
+        match result.status {
+            fluxbench_report::BenchmarkStatus::Crashed => {
+                let msg = result
+                    .failure
+                    .as_ref()
+                    .map(|f| f.message.as_str())
+                    .unwrap_or("benchmark crashed");
+                println!(
+                    "::error file={},line={}::{}: {}",
+                    result.file, result.line, result.id, msg
+                );
+            }
+            fluxbench_report::BenchmarkStatus::Failed => {
+                let msg = result
+                    .failure
+                    .as_ref()
+                    .map(|f| f.message.as_str())
+                    .unwrap_or("benchmark failed");
+                println!(
+                    "::error file={},line={}::{}: {}",
+                    result.file, result.line, result.id, msg
+                );
+            }
+            _ => {}
+        }
+
+        // Annotate significant regressions
+        if let Some(cmp) = &result.comparison {
+            if cmp.is_significant && cmp.relative_change > 0.0 {
+                println!(
+                    "::error file={},line={}::{}: regression {:+.1}% ({} → {})",
+                    result.file,
+                    result.line,
+                    result.id,
+                    cmp.relative_change,
+                    format_duration(cmp.baseline_mean_ns),
+                    result
+                        .metrics
+                        .as_ref()
+                        .map(|m| format_duration(m.mean_ns))
+                        .unwrap_or_default(),
+                );
+            }
+        }
+    }
+
+    // Annotate verification failures
+    for v in &report.verifications {
+        match &v.status {
+            fluxbench_logic::VerificationStatus::Failed => {
+                let level = match v.severity {
+                    fluxbench_core::Severity::Critical => "error",
+                    _ => "warning",
+                };
+                println!("::{}::{}: {}", level, v.id, v.message);
+            }
+            fluxbench_logic::VerificationStatus::Error { message } => {
+                println!("::error::{}: evaluation error: {}", v.id, message);
+            }
+            _ => {}
+        }
+    }
+}
+
 fn resolve_git_ref(git_ref: &str) -> anyhow::Result<String> {
     let output = std::process::Command::new("git")
         .args(["rev-parse", "--verify", git_ref])
@@ -816,12 +923,15 @@ fn format_comparison_output(
             };
 
             output.push_str(&format!(
-                "    baseline: {:.2} ns → current: {:.2} ns\n",
-                comparison.baseline_mean_ns, metrics.mean_ns
+                "    baseline: {} → current: {}\n",
+                format_duration(comparison.baseline_mean_ns),
+                format_duration(metrics.mean_ns),
             ));
             output.push_str(&format!(
-                "    change: {:+.2}% ({:+.2} ns) {}\n",
-                comparison.relative_change, comparison.absolute_change_ns, change_icon
+                "    change: {:+.2}% ({}) {}\n",
+                comparison.relative_change,
+                format_duration(comparison.absolute_change_ns.abs()),
+                change_icon,
             ));
         }
 
