@@ -66,7 +66,7 @@ pub struct ComparisonSeries {
     pub x_values: Vec<String>,
     /// Competitor/series names (benchmark IDs)
     pub series_names: Vec<String>,
-    /// Data points: series_data[series_idx][x_idx] = value
+    /// Data points: `series_data[series_idx][x_idx] = value`
     pub series_data: Vec<Vec<f64>>,
     /// Metric used
     pub metric: String,

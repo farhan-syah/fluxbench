@@ -481,6 +481,33 @@ fn run_benchmarks(
     let total_duration_ms = start_time.elapsed().as_secs_f64() * 1000.0;
     let mut report = build_report(&results, &stats, &exec_config, total_duration_ms);
 
+    // Load and apply baseline comparison if --baseline was passed
+    if let Some(baseline_path) = resolve_baseline_path(&cli.baseline, config) {
+        if baseline_path.exists() {
+            match std::fs::read_to_string(&baseline_path).and_then(|json| {
+                serde_json::from_str::<fluxbench_report::Report>(&json)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+            }) {
+                Ok(baseline) => {
+                    let threshold = cli.threshold.unwrap_or(config.ci.regression_threshold);
+                    apply_baseline_comparison(&mut report, &baseline, threshold);
+                }
+                Err(e) => {
+                    eprintln!(
+                        "Warning: failed to load baseline {}: {}",
+                        baseline_path.display(),
+                        e
+                    );
+                }
+            }
+        } else {
+            eprintln!(
+                "Warning: baseline file not found: {}",
+                baseline_path.display()
+            );
+        }
+    }
+
     // Run comparisons, synthetics, and verifications
     let (comparison_results, comparison_series, synthetic_results, verification_results) =
         execute_verifications(&results, &stats);
@@ -607,68 +634,9 @@ fn compare_benchmarks(
     let total_duration_ms = start_time.elapsed().as_secs_f64() * 1000.0;
     let mut report = build_report(&results, &stats, &exec_config, total_duration_ms);
 
-    // Store baseline metadata for summary header
-    report.baseline_meta = Some(baseline.meta.clone());
-
-    // Add comparison data
+    // Apply baseline comparison data
     let regression_threshold = cli.threshold.unwrap_or(config.ci.regression_threshold);
-    let baseline_map: std::collections::HashMap<_, _> = baseline
-        .results
-        .iter()
-        .filter_map(|r| r.metrics.as_ref().map(|m| (r.id.clone(), m.clone())))
-        .collect();
-
-    for result in &mut report.results {
-        if let (Some(metrics), Some(baseline_metrics)) =
-            (&result.metrics, baseline_map.get(&result.id))
-        {
-            let baseline_mean = baseline_metrics.mean_ns;
-            let absolute_change = metrics.mean_ns - baseline_mean;
-            let relative_change = if baseline_mean > 0.0 {
-                (absolute_change / baseline_mean) * 100.0
-            } else {
-                0.0
-            };
-
-            // Determine significance via CI non-overlap and threshold crossing.
-            let ci_non_overlap = metrics.ci_upper_ns < baseline_metrics.ci_lower_ns
-                || metrics.ci_lower_ns > baseline_metrics.ci_upper_ns;
-            let is_significant = relative_change.abs() > regression_threshold && ci_non_overlap;
-
-            // Track regressions/improvements
-            if relative_change > regression_threshold {
-                report.summary.regressions += 1;
-            } else if relative_change < -regression_threshold {
-                report.summary.improvements += 1;
-            }
-
-            let mut effect_size = if metrics.std_dev_ns > f64::EPSILON {
-                absolute_change / metrics.std_dev_ns
-            } else {
-                0.0
-            };
-            if !effect_size.is_finite() {
-                effect_size = 0.0;
-            }
-
-            let probability_regression = if ci_non_overlap {
-                if relative_change > 0.0 { 0.99 } else { 0.01 }
-            } else if relative_change > 0.0 {
-                0.60
-            } else {
-                0.40
-            };
-
-            result.comparison = Some(fluxbench_report::Comparison {
-                baseline_mean_ns: baseline_mean,
-                absolute_change_ns: absolute_change,
-                relative_change,
-                probability_regression,
-                is_significant,
-                effect_size,
-            });
-        }
-    }
+    apply_baseline_comparison(&mut report, &baseline, regression_threshold);
 
     // Run comparisons, synthetics, and verifications
     let (comparison_results, comparison_series, synthetic_results, verification_results) =
@@ -756,6 +724,74 @@ fn save_baseline_if_needed(
     eprintln!("Baseline saved to: {}", path.display());
 
     Ok(())
+}
+
+/// Apply baseline comparison data to the report.
+///
+/// Computes per-benchmark regression/improvement metrics by comparing current
+/// results against baseline means, CI overlap, and effect size.
+fn apply_baseline_comparison(
+    report: &mut fluxbench_report::Report,
+    baseline: &fluxbench_report::Report,
+    regression_threshold: f64,
+) {
+    report.baseline_meta = Some(baseline.meta.clone());
+
+    let baseline_map: std::collections::HashMap<_, _> = baseline
+        .results
+        .iter()
+        .filter_map(|r| r.metrics.as_ref().map(|m| (r.id.clone(), m.clone())))
+        .collect();
+
+    for result in &mut report.results {
+        if let (Some(metrics), Some(baseline_metrics)) =
+            (&result.metrics, baseline_map.get(&result.id))
+        {
+            let baseline_mean = baseline_metrics.mean_ns;
+            let absolute_change = metrics.mean_ns - baseline_mean;
+            let relative_change = if baseline_mean > 0.0 {
+                (absolute_change / baseline_mean) * 100.0
+            } else {
+                0.0
+            };
+
+            let ci_non_overlap = metrics.ci_upper_ns < baseline_metrics.ci_lower_ns
+                || metrics.ci_lower_ns > baseline_metrics.ci_upper_ns;
+            let is_significant = relative_change.abs() > regression_threshold && ci_non_overlap;
+
+            if relative_change > regression_threshold {
+                report.summary.regressions += 1;
+            } else if relative_change < -regression_threshold {
+                report.summary.improvements += 1;
+            }
+
+            let mut effect_size = if metrics.std_dev_ns > f64::EPSILON {
+                absolute_change / metrics.std_dev_ns
+            } else {
+                0.0
+            };
+            if !effect_size.is_finite() {
+                effect_size = 0.0;
+            }
+
+            let probability_regression = if ci_non_overlap {
+                if relative_change > 0.0 { 0.99 } else { 0.01 }
+            } else if relative_change > 0.0 {
+                0.60
+            } else {
+                0.40
+            };
+
+            result.comparison = Some(fluxbench_report::Comparison {
+                baseline_mean_ns: baseline_mean,
+                absolute_change_ns: absolute_change,
+                relative_change,
+                probability_regression,
+                is_significant,
+                effect_size,
+            });
+        }
+    }
 }
 
 /// Resolve baseline path from CLI flag, config, or default.
