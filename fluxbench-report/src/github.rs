@@ -217,16 +217,54 @@ fn write_verifications(output: &mut String, verifications: &[VerificationResult]
     output.push('\n');
 }
 
+/// Scale nanoseconds to the most appropriate unit, returning the scaled value and unit name.
+pub fn scale_duration(ns: f64) -> (f64, &'static str) {
+    if ns >= 1_000_000_000.0 {
+        (ns / 1_000_000_000.0, "s")
+    } else if ns >= 1_000_000.0 {
+        (ns / 1_000_000.0, "ms")
+    } else if ns >= 1_000.0 {
+        (ns / 1_000.0, "us")
+    } else {
+        (ns, "ns")
+    }
+}
+
+/// Scale nanoseconds using the same unit tier as a reference value.
+///
+/// Ensures consistent units when displaying related values (e.g., mean and std_dev).
+pub fn scale_duration_with_reference(ns: f64, reference_ns: f64) -> (f64, &'static str) {
+    if reference_ns >= 1_000_000_000.0 {
+        (ns / 1_000_000_000.0, "s")
+    } else if reference_ns >= 1_000_000.0 {
+        (ns / 1_000_000.0, "ms")
+    } else if reference_ns >= 1_000.0 {
+        (ns / 1_000.0, "us")
+    } else {
+        (ns, "ns")
+    }
+}
+
+/// Scale throughput (ops/sec) to a readable unit.
+pub fn scale_throughput(ops_sec: f64) -> (f64, &'static str) {
+    if ops_sec >= 1_000_000_000.0 {
+        (ops_sec / 1_000_000_000.0, "Gops/s")
+    } else if ops_sec >= 1_000_000.0 {
+        (ops_sec / 1_000_000.0, "Mops/s")
+    } else if ops_sec >= 1_000.0 {
+        (ops_sec / 1_000.0, "Kops/s")
+    } else {
+        (ops_sec, "ops/s")
+    }
+}
+
 /// Format a duration in nanoseconds to a human-readable string (ns/us/ms/s).
 pub fn format_duration(ns: f64) -> String {
-    if ns < 1_000.0 {
-        format!("{:.0} ns", ns)
-    } else if ns < 1_000_000.0 {
-        format!("{:.1} us", ns / 1_000.0)
-    } else if ns < 1_000_000_000.0 {
-        format!("{:.2} ms", ns / 1_000_000.0)
-    } else {
-        format!("{:.2} s", ns / 1_000_000_000.0)
+    let (value, unit) = scale_duration(ns);
+    match unit {
+        "s" | "ms" => format!("{:.2} {}", value, unit),
+        "us" => format!("{:.1} {}", value, unit),
+        _ => format!("{:.0} {}", value, unit),
     }
 }
 

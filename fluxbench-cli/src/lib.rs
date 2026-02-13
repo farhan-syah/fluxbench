@@ -36,8 +36,8 @@ use clap::{Parser, Subcommand};
 use fluxbench_core::{BenchmarkDef, WorkerMain};
 use fluxbench_logic::aggregate_verifications;
 use fluxbench_report::{
-    OutputFormat, format_duration, generate_csv_report, generate_github_summary,
-    generate_html_report, generate_json_report,
+    OutputFormat, format_duration, generate_csv_report, generate_github_action_benchmark,
+    generate_github_summary, generate_html_report, generate_json_report,
 };
 use rayon::ThreadPoolBuilder;
 use regex::Regex;
@@ -58,7 +58,7 @@ pub struct Cli {
     #[arg(default_value = ".*")]
     pub filter: String,
 
-    /// Output format: json, github-summary, csv, html, human
+    /// Output format: json, github-summary, github-action, csv, html, human
     #[arg(long, default_value = "human")]
     pub format: String,
 
@@ -530,6 +530,7 @@ fn run_benchmarks(
     let output = match format {
         OutputFormat::Json => generate_json_report(&report)?,
         OutputFormat::GithubSummary => generate_github_summary(&report),
+        OutputFormat::GithubActionBenchmark => generate_github_action_benchmark(&report),
         OutputFormat::Html => generate_html_report(&report),
         OutputFormat::Csv => generate_csv_report(&report),
         OutputFormat::Human => format_human_output(&report),
@@ -658,6 +659,7 @@ fn compare_benchmarks(
     let output = match format {
         OutputFormat::Json => generate_json_report(&report)?,
         OutputFormat::GithubSummary => generate_github_summary(&report),
+        OutputFormat::GithubActionBenchmark => generate_github_action_benchmark(&report),
         OutputFormat::Html => generate_html_report(&report),
         OutputFormat::Csv => generate_csv_report(&report),
         OutputFormat::Human => format_comparison_output(&report, &baseline),
