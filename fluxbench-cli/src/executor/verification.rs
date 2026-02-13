@@ -275,7 +275,13 @@ pub fn execute_verifications(
         Vec::new()
     } else {
         // Run verifications
-        let verification_context = VerificationContext::new(&context, unavailable);
+        let mut verification_context = VerificationContext::new(&context, unavailable);
+        // Propagate unit info from synthetics
+        for sr in &synthetic_results {
+            if let Some(ref unit) = sr.unit {
+                verification_context.set_unit(&sr.id, unit);
+            }
+        }
         run_verifications(&verifications, &verification_context)
     };
 

@@ -13,8 +13,8 @@ pub use context::MetricContext;
 pub use graph::{DependencyGraph, GraphError};
 pub use synthetic::{SyntheticDef, SyntheticResult, compute_synthetics};
 pub use verification::{
-    Severity, Verification, VerificationContext, VerificationResult, VerificationStatus,
-    VerificationSummary, aggregate_verifications, run_verifications,
+    ResolvedMetric, Severity, Verification, VerificationContext, VerificationResult,
+    VerificationStatus, VerificationSummary, aggregate_verifications, run_verifications,
 };
 
 /// Definition of a verification rule registered via `#[flux::verify]`

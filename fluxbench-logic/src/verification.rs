@@ -11,6 +11,17 @@ use std::sync::OnceLock;
 // Re-export the single canonical Severity from fluxbench-core
 pub use fluxbench_core::Severity;
 
+/// A resolved metric value with its unit
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolvedMetric {
+    /// Metric name
+    pub name: String,
+    /// Metric value
+    pub value: f64,
+    /// Unit (e.g., "ns", "req/s", "MB/s"). None means nanoseconds (default).
+    pub unit: Option<String>,
+}
+
 /// Verification definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Verification {
@@ -94,6 +105,9 @@ pub struct VerificationResult {
     pub status: VerificationStatus,
     /// Actual computed value from the expression, if available
     pub actual_value: Option<f64>,
+    /// Resolved metric values used in the expression
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resolved_metrics: Vec<ResolvedMetric>,
     /// Severity level of the verification
     pub severity: Severity,
     /// Human-readable message describing the result
@@ -113,6 +127,8 @@ pub struct VerificationContext<'a> {
     metrics: &'a MetricContext,
     /// Metrics that are unavailable (crashed/filtered benchmarks)
     unavailable: FxHashSet<String>,
+    /// Unit info for metrics (metric name → unit string). Absent means nanoseconds.
+    metric_units: std::collections::HashMap<String, String>,
 }
 
 impl<'a> VerificationContext<'a> {
@@ -121,7 +137,13 @@ impl<'a> VerificationContext<'a> {
         Self {
             metrics,
             unavailable,
+            metric_units: std::collections::HashMap::new(),
         }
+    }
+
+    /// Set the unit for a metric (e.g., "req/s", "MB/s")
+    pub fn set_unit(&mut self, name: impl Into<String>, unit: impl Into<String>) {
+        self.metric_units.insert(name.into(), unit.into());
     }
 
     /// Check if expression references any unavailable metrics
@@ -214,6 +236,7 @@ pub fn run_verifications(
                         missing_metrics: missing.clone(),
                     },
                     actual_value: None,
+                    resolved_metrics: Vec::new(),
                     severity: v.severity,
                     message: format!("Skipped: required metrics unavailable [{}]", missing),
                 };
@@ -230,6 +253,7 @@ pub fn run_verifications(
                         message: format!("unknown variable(s): {}", unknown.join(", ")),
                     },
                     actual_value: None,
+                    resolved_metrics: Vec::new(),
                     severity: v.severity,
                     message: format!(
                         "Unknown variable '{}'. Available metrics: [{}]",
@@ -238,6 +262,19 @@ pub fn run_verifications(
                     ),
                 };
             }
+
+            // Resolve metric values used in this expression
+            let vars = extract_variables(&v.expression);
+            let resolved: Vec<ResolvedMetric> = vars
+                .iter()
+                .filter_map(|name| {
+                    context.metrics.get(name).map(|val| ResolvedMetric {
+                        name: name.clone(),
+                        value: val,
+                        unit: context.metric_units.get(name).cloned(),
+                    })
+                })
+                .collect();
 
             // Step 3: Evaluate the expression
             match context.metrics.evaluate(&v.expression) {
@@ -252,6 +289,7 @@ pub fn run_verifications(
                             VerificationStatus::Failed
                         },
                         actual_value: Some(value),
+                        resolved_metrics: resolved,
                         severity: v.severity,
                         message: if passed {
                             format!("{} = {:.2}", v.expression, value)
@@ -269,6 +307,7 @@ pub fn run_verifications(
                             message: error_msg.clone(),
                         },
                         actual_value: None,
+                        resolved_metrics: resolved,
                         severity: v.severity,
                         message: format!("Evaluation error: {}", error_msg),
                     }
