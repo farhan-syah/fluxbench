@@ -20,6 +20,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -50,6 +51,12 @@ jobs:
 
       # Cache keyed by SHA so each merge gets its own entry.
       # benchmark.yml uses restore-keys prefix matching to find the latest one.
+      # Delete stale cache first so re-runs on the same commit work.
+      - name: Clear stale baseline cache
+        run: gh cache delete "fluxbench-baseline-${{ github.sha }}" 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Cache baseline
         uses: actions/cache/save@v4
         with:
