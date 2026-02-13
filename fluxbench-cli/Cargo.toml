@@ -17,6 +17,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "fluxbench"
 path = "src/main.rs"
+doc = false
 
 [dependencies]
 fluxbench-core.workspace = true
