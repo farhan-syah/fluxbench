@@ -30,6 +30,8 @@ use std::hint::black_box;
     group = "hot_path",
     severity = "critical",
     threshold = 5.0,
+    warmup = "2s",
+    measurement = "3s",
     tags = "latency"
 )]
 fn request_handler(b: &mut Bencher) {
@@ -50,6 +52,8 @@ fn request_handler(b: &mut Bencher) {
     group = "hot_path",
     severity = "critical",
     threshold = 3.0,
+    warmup = "2s",
+    measurement = "3s",
     tags = "throughput"
 )]
 fn token_scan(b: &mut Bencher) {
@@ -69,6 +73,8 @@ fn token_scan(b: &mut Bencher) {
     group = "hot_path",
     severity = "warning",
     threshold = 10.0,
+    warmup = "2s",
+    measurement = "3s",
     tags = "throughput"
 )]
 fn batch_transform(b: &mut Bencher) {

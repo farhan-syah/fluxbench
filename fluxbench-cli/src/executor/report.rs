@@ -153,6 +153,7 @@ pub fn build_report(
             file: result.file.clone(),
             line: result.line,
             metrics,
+            threshold: result.threshold,
             comparison: None, // Filled when comparing to baseline
             failure,
         });

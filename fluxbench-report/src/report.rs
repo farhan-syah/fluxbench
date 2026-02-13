@@ -144,6 +144,9 @@ pub struct BenchmarkReportResult {
     pub line: u32,
     /// Timing and statistical metrics (if successful)
     pub metrics: Option<BenchmarkMetrics>,
+    /// Per-benchmark regression threshold percentage (0.0 = use global)
+    #[serde(default)]
+    pub threshold: f64,
     /// Comparison results against baseline (if applicable)
     pub comparison: Option<Comparison>,
     /// Failure details (if failed)

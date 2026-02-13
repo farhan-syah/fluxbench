@@ -119,6 +119,8 @@ pub struct BenchExecutionResult {
     pub failure_kind: Option<String>,
     pub backtrace: Option<String>,
     pub severity: fluxbench_core::Severity,
+    /// Per-benchmark regression threshold (0.0 = use global)
+    pub threshold: f64,
 }
 
 /// Execute benchmarks and produce results (in-process mode)
@@ -217,6 +219,7 @@ impl Executor {
                     failure_kind: None,
                     backtrace: None,
                     severity: bench.severity,
+                    threshold: bench.threshold,
                 }
             }
             Err(panic) => {
@@ -244,6 +247,7 @@ impl Executor {
                     failure_kind: Some("panic".to_string()),
                     backtrace: None,
                     severity: bench.severity,
+                    threshold: bench.threshold,
                 }
             }
         }
@@ -357,6 +361,7 @@ impl IsolatedExecutor {
                         failure_kind: Some("crashed".to_string()),
                         backtrace: None,
                         severity: bench.severity,
+                        threshold: bench.threshold,
                     });
                     pb.inc(1);
                 }
@@ -431,6 +436,7 @@ impl IsolatedExecutor {
             failure_kind,
             backtrace,
             severity: bench.severity,
+            threshold: bench.threshold,
         }
     }
 }

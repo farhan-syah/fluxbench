@@ -59,7 +59,8 @@ save_baseline = false
 
 [ci]
 # Regression threshold percentage — fail CI if exceeded (default: 5.0)
-regression_threshold = 5.0
+# Shared CI runners (GitHub Actions) have 10-40% noise; use 25%+ to avoid false positives.
+regression_threshold = 25.0
 # Emit GitHub Actions annotations (::warning, ::error) (default: false)
 github_annotations = true
 # Exit non-zero on critical verification failures (default: true)

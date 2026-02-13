@@ -32,7 +32,7 @@ pub struct BenchmarkDef {
     pub group: &'static str,
     /// Severity level for CI reporting
     pub severity: Severity,
-    /// Regression threshold percentage
+    /// Per-benchmark regression threshold percentage (0.0 = use global threshold)
     pub threshold: f64,
     /// Absolute time budget in nanoseconds
     pub budget_ns: Option<u64>,

@@ -747,6 +747,13 @@ fn apply_baseline_comparison(
         if let (Some(metrics), Some(baseline_metrics)) =
             (&result.metrics, baseline_map.get(&result.id))
         {
+            // Use per-benchmark threshold if set (> 0.0), otherwise global
+            let effective_threshold = if result.threshold > 0.0 {
+                result.threshold
+            } else {
+                regression_threshold
+            };
+
             let baseline_mean = baseline_metrics.mean_ns;
             let absolute_change = metrics.mean_ns - baseline_mean;
             let relative_change = if baseline_mean > 0.0 {
@@ -757,11 +764,11 @@ fn apply_baseline_comparison(
 
             let ci_non_overlap = metrics.ci_upper_ns < baseline_metrics.ci_lower_ns
                 || metrics.ci_lower_ns > baseline_metrics.ci_upper_ns;
-            let is_significant = relative_change.abs() > regression_threshold && ci_non_overlap;
+            let is_significant = relative_change.abs() > effective_threshold && ci_non_overlap;
 
-            if relative_change > regression_threshold {
+            if relative_change > effective_threshold {
                 report.summary.regressions += 1;
-            } else if relative_change < -regression_threshold {
+            } else if relative_change < -effective_threshold {
                 report.summary.improvements += 1;
             }
 
@@ -986,4 +993,183 @@ fn format_comparison_output(
     ));
 
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fluxbench_report::{
+        BenchmarkMetrics, BenchmarkReportResult, BenchmarkStatus, Report, ReportConfig, ReportMeta,
+        ReportSummary, SystemInfo,
+    };
+
+    fn dummy_meta() -> ReportMeta {
+        ReportMeta {
+            schema_version: 1,
+            version: "0.1.0".to_string(),
+            timestamp: chrono::Utc::now(),
+            git_commit: None,
+            git_branch: None,
+            system: SystemInfo {
+                os: "linux".to_string(),
+                os_version: "6.0".to_string(),
+                cpu: "test".to_string(),
+                cpu_cores: 1,
+                memory_gb: 1.0,
+            },
+            config: ReportConfig {
+                warmup_time_ns: 0,
+                measurement_time_ns: 0,
+                min_iterations: None,
+                max_iterations: None,
+                bootstrap_iterations: 0,
+                confidence_level: 0.95,
+                track_allocations: false,
+            },
+        }
+    }
+
+    fn dummy_metrics(mean: f64) -> BenchmarkMetrics {
+        BenchmarkMetrics {
+            samples: 100,
+            mean_ns: mean,
+            median_ns: mean,
+            std_dev_ns: mean * 0.01,
+            min_ns: mean * 0.9,
+            max_ns: mean * 1.1,
+            p50_ns: mean,
+            p90_ns: mean * 1.05,
+            p95_ns: mean * 1.07,
+            p99_ns: mean * 1.09,
+            p999_ns: mean * 1.1,
+            skewness: 0.0,
+            kurtosis: 3.0,
+            ci_lower_ns: mean * 0.98,
+            ci_upper_ns: mean * 1.02,
+            ci_level: 0.95,
+            throughput_ops_sec: None,
+            alloc_bytes: 0,
+            alloc_count: 0,
+            mean_cycles: 0.0,
+            median_cycles: 0.0,
+            min_cycles: 0,
+            max_cycles: 0,
+            cycles_per_ns: 0.0,
+        }
+    }
+
+    fn dummy_result(id: &str, mean: f64, threshold: f64) -> BenchmarkReportResult {
+        BenchmarkReportResult {
+            id: id.to_string(),
+            name: id.to_string(),
+            group: "test".to_string(),
+            status: BenchmarkStatus::Passed,
+            severity: fluxbench_core::Severity::Warning,
+            file: "test.rs".to_string(),
+            line: 1,
+            metrics: Some(dummy_metrics(mean)),
+            threshold,
+            comparison: None,
+            failure: None,
+        }
+    }
+
+    fn dummy_report(results: Vec<BenchmarkReportResult>) -> Report {
+        let total = results.len();
+        Report {
+            meta: dummy_meta(),
+            results,
+            comparisons: vec![],
+            comparison_series: vec![],
+            synthetics: vec![],
+            verifications: vec![],
+            summary: ReportSummary {
+                total_benchmarks: total,
+                passed: total,
+                ..Default::default()
+            },
+            baseline_meta: None,
+        }
+    }
+
+    #[test]
+    fn per_bench_threshold_overrides_global() {
+        // Baseline: 100ns. Current: 108ns → 8% regression.
+        // Global threshold: 25%. Per-bench threshold: 5%.
+        // Should detect regression via per-bench threshold but not global.
+        let mut report = dummy_report(vec![dummy_result("fast_bench", 108.0, 5.0)]);
+        let baseline = dummy_report(vec![dummy_result("fast_bench", 100.0, 5.0)]);
+
+        apply_baseline_comparison(&mut report, &baseline, 25.0);
+
+        assert_eq!(
+            report.summary.regressions, 1,
+            "per-bench 5% should catch 8% regression"
+        );
+        let cmp = report.results[0].comparison.as_ref().unwrap();
+        assert!(cmp.is_significant);
+    }
+
+    #[test]
+    fn zero_threshold_falls_back_to_global() {
+        // Baseline: 100ns. Current: 108ns → 8% regression.
+        // Global threshold: 25%. Per-bench threshold: 0.0 (use global).
+        // 8% < 25%, so no regression.
+        let mut report = dummy_report(vec![dummy_result("normal_bench", 108.0, 0.0)]);
+        let baseline = dummy_report(vec![dummy_result("normal_bench", 100.0, 0.0)]);
+
+        apply_baseline_comparison(&mut report, &baseline, 25.0);
+
+        assert_eq!(
+            report.summary.regressions, 0,
+            "8% under 25% global should not regress"
+        );
+        let cmp = report.results[0].comparison.as_ref().unwrap();
+        assert!(!cmp.is_significant);
+    }
+
+    #[test]
+    fn mixed_thresholds_independent() {
+        // Two benchmarks: one with tight per-bench threshold, one using global.
+        // Both regress by 8%.
+        let mut report = dummy_report(vec![
+            dummy_result("tight", 108.0, 5.0), // per-bench 5% → should regress
+            dummy_result("loose", 108.0, 0.0), // global 25% → should not
+        ]);
+        let baseline = dummy_report(vec![
+            dummy_result("tight", 100.0, 5.0),
+            dummy_result("loose", 100.0, 0.0),
+        ]);
+
+        apply_baseline_comparison(&mut report, &baseline, 25.0);
+
+        assert_eq!(report.summary.regressions, 1);
+        assert!(
+            report.results[0]
+                .comparison
+                .as_ref()
+                .unwrap()
+                .is_significant
+        );
+        assert!(
+            !report.results[1]
+                .comparison
+                .as_ref()
+                .unwrap()
+                .is_significant
+        );
+    }
+
+    #[test]
+    fn per_bench_threshold_detects_improvement() {
+        // Baseline: 100ns. Current: 90ns → -10% improvement.
+        // Per-bench threshold: 5%.
+        let mut report = dummy_report(vec![dummy_result("improving", 90.0, 5.0)]);
+        let baseline = dummy_report(vec![dummy_result("improving", 100.0, 5.0)]);
+
+        apply_baseline_comparison(&mut report, &baseline, 25.0);
+
+        assert_eq!(report.summary.improvements, 1);
+        assert_eq!(report.summary.regressions, 0);
+    }
 }
