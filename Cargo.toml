@@ -47,16 +47,16 @@ tokio = { version = "1", features = ["full"] }
 rayon = "1.10"
 
 # Random number generation (for bootstrap)
-rand = "0.8"
+rand = "0.10"
 
 # Expression evaluation
-evalexpr = "11"
+evalexpr = "13"
 
 # Progress reporting
-indicatif = "0.17"
+indicatif = "0.18"
 
 # Proc-macro utilities
-syn = { version = "2", features = ["full", "parsing", "printing"] }
+syn = { version = "3", features = ["full", "parsing", "printing"] }
 quote = "1"
 proc-macro2 = "1"
 
@@ -64,7 +64,7 @@ proc-macro2 = "1"
 inventory = "0.3"
 
 # Hashing
-fxhash = "0.2"
+rustc-hash = "2"
 
 # Time utilities
 chrono = { version = "0.4", features = ["serde"] }
@@ -85,7 +85,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Configuration
-toml = "0.8"
+toml = "1"
 
 [profile.release]
 lto = "thin"

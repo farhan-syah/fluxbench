@@ -3,8 +3,8 @@
 //! Runs performance assertions with explicit status handling for missing dependencies.
 
 use crate::MetricContext;
-use fxhash::FxHashSet;
 use regex::Regex;
+use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 

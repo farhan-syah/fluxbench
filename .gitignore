@@ -5,8 +5,6 @@ debug/
 release/
 *.pdb
 
-# Cargo lock file 
-Cargo.lock
 
 # Backup files
 **/*.rs.bk

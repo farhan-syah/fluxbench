@@ -16,6 +16,6 @@ fluxbench-stats.workspace = true
 evalexpr.workspace = true
 regex.workspace = true
 thiserror.workspace = true
-fxhash.workspace = true
+rustc-hash.workspace = true
 inventory.workspace = true
 serde.workspace = true

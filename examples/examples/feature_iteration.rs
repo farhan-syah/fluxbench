@@ -48,7 +48,7 @@ fn setup_sort_fresh(b: &mut Bencher) {
     use rand::prelude::*;
     b.iter_with_setup(
         || {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             let mut v: Vec<u32> = (0..1_000).collect();
             v.shuffle(&mut rng);
             v

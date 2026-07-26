@@ -2,7 +2,7 @@
 //!
 //! Manages dependencies between benchmarks, verifications, and synthetic metrics.
 
-use fxhash::{FxHashMap, FxHashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 use thiserror::Error;
 
 /// Errors from graph operations

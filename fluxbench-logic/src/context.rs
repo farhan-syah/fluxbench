@@ -5,7 +5,7 @@
 use evalexpr::{
     ContextWithMutableVariables, EvalexprError, HashMapContext, Value, eval_with_context,
 };
-use fxhash::FxHashMap;
+use rustc_hash::FxHashMap;
 use thiserror::Error;
 
 /// Errors from metric evaluation

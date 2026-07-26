@@ -35,7 +35,7 @@ use fluxbench_logic::{
 };
 use fluxbench_report::{ComparisonEntry, ComparisonResult, ComparisonSeries};
 use fluxbench_stats::SummaryStatistics;
-use fxhash::FxHashSet;
+use rustc_hash::FxHashSet;
 
 /// Run comparisons, synthetics, and verifications against computed metrics
 ///

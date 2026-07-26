@@ -4,8 +4,7 @@
 //! methods for computing confidence intervals.
 
 use crate::{BCA_THRESHOLD, DEFAULT_BOOTSTRAP_ITERATIONS, DEFAULT_CONFIDENCE_LEVEL};
-use rand::Rng;
-use rand::thread_rng;
+use rand::RngExt;
 use rayon::prelude::*;
 use thiserror::Error;
 
@@ -201,11 +200,11 @@ fn generate_bootstrap_means_parallel(samples: &[f64], iterations: usize) -> Vec<
     let n = samples.len();
     (0..iterations)
         .into_par_iter()
-        .map_init(thread_rng, |rng, _| {
+        .map_init(rand::rng, |rng, _| {
             let mut sum = 0.0;
             for _ in 0..n {
-                // SAFETY: index is always in bounds because gen_range(0..n) < n
-                sum += samples[rng.gen_range(0..n)];
+                // SAFETY: index is always in bounds because random_range(0..n) < n
+                sum += samples[rng.random_range(0..n)];
             }
             sum / n as f64
         })
@@ -220,12 +219,12 @@ fn generate_bootstrap_means_parallel(samples: &[f64], iterations: usize) -> Vec<
 fn generate_bootstrap_means_serial(samples: &[f64], iterations: usize) -> Vec<f64> {
     assert!(!samples.is_empty(), "samples must not be empty");
     let n = samples.len();
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     (0..iterations)
         .map(|_| {
             let mut sum = 0.0;
             for _ in 0..n {
-                sum += samples[rng.gen_range(0..n)];
+                sum += samples[rng.random_range(0..n)];
             }
             sum / n as f64
         })

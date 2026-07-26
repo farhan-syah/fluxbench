@@ -32,7 +32,7 @@ fn linear_scan(b: &mut Bencher, n: u32) {
 #[bench(group = "scaling", args = [100, 1000, 10000, 100000])]
 fn sort_scaling(b: &mut Bencher, n: u32) {
     use rand::prelude::*;
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     b.iter_with_setup(
         || {
             let mut v: Vec<u32> = (0..n).collect();
